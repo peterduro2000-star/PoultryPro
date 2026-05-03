@@ -1,0 +1,13 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Allow anyone to read/write while you are developing.
+    // NOTE: Before you release Poultry Pro to the Play Store, 
+    // we will change 'true' to 'request.auth != null'
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
