@@ -16,31 +16,36 @@ class RecordsScreen extends StatefulWidget {
 }
 
 class _RecordsScreenState extends State<RecordsScreen> {
-@override
-void initState() {
-  super.initState();
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    final flock = context.read<FlockProvider>().selectedFlock;
+  FlockProvider? _flockProvider;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_flockProvider != null) return;
+
+    _flockProvider = context.read<FlockProvider>();
+    _flockProvider!.addListener(_onFlockChanged);
+
+    final flock = _flockProvider!.selectedFlock;
     if (flock != null) {
       context.read<DailyRecordProvider>().loadRecords(flock.id);
     }
-    // Listen for flock changes
-    context.read<FlockProvider>().addListener(_onFlockChanged);
-  });
-}
-
-void _onFlockChanged() {
-  final flock = context.read<FlockProvider>().selectedFlock;
-  if (flock != null) {
-    context.read<DailyRecordProvider>().loadRecords(flock.id);
   }
-}
 
-@override
-void dispose() {
-  context.read<FlockProvider>().removeListener(_onFlockChanged);
-  super.dispose();
-}
+  void _onFlockChanged() {
+    final flock = _flockProvider?.selectedFlock;
+    if (flock != null && mounted) {
+      context.read<DailyRecordProvider>().loadRecords(flock.id);
+    }
+  }
+
+  @override
+  void dispose() {
+    _flockProvider?.removeListener(_onFlockChanged);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -66,7 +71,8 @@ void dispose() {
             ? const SizedBox.shrink()
             : FloatingActionButton(
                 heroTag: 'record_fab',
-                onPressed: () => _showAddRecordSheet(context, provider.selectedFlock!.id),
+                onPressed: () =>
+                    _showAddRecordSheet(context, provider.selectedFlock!.id),
                 child: const Icon(Icons.add),
               ),
       ),
@@ -78,11 +84,13 @@ void dispose() {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.home, size: 48, color: AppTheme.primaryColor.withOpacity(0.4)),
+          Icon(Icons.home,
+              size: 48, color: AppTheme.primaryColor.withOpacity(0.4)),
           const SizedBox(height: AppTheme.spacingMD),
           Text('No flock selected', style: AppTheme.headingSmall),
           const SizedBox(height: AppTheme.spacingSM),
-          Text('Go to Home screen to select a flock', style: AppTheme.bodyMedium),
+          Text('Go to Home screen to select a flock',
+              style: AppTheme.bodyMedium),
         ],
       ),
     );
@@ -96,7 +104,9 @@ void dispose() {
         }
         if (provider.error != null) {
           return Center(
-            child: Text(provider.error!, style: AppTheme.bodyMedium.copyWith(color: AppTheme.errorColor)),
+            child: Text(provider.error!,
+                style:
+                    AppTheme.bodyMedium.copyWith(color: AppTheme.errorColor)),
           );
         }
         if (provider.records.isEmpty) {
@@ -104,11 +114,13 @@ void dispose() {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.edit_note, size: 80, color: AppTheme.primaryColor.withOpacity(0.3)),
+                Icon(Icons.edit_note,
+                    size: 80, color: AppTheme.primaryColor.withOpacity(0.3)),
                 const SizedBox(height: AppTheme.spacingMD),
                 Text('No records yet', style: AppTheme.headingSmall),
                 const SizedBox(height: AppTheme.spacingSM),
-                Text('Tap + to add today\'s record', style: AppTheme.bodyMedium),
+                Text('Tap + to add today\'s record',
+                    style: AppTheme.bodyMedium),
               ],
             ),
           );
@@ -120,7 +132,8 @@ void dispose() {
               child: ListView.builder(
                 padding: const EdgeInsets.all(AppTheme.spacingMD),
                 itemCount: provider.records.length,
-                itemBuilder: (context, index) => _RecordCard(record: provider.records[index]),
+                itemBuilder: (context, index) =>
+                    _RecordCard(record: provider.records[index]),
               ),
             ),
           ],
@@ -196,7 +209,8 @@ class _SummaryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingSM, horizontal: AppTheme.spacingSM),
+      padding: const EdgeInsets.symmetric(
+          vertical: AppTheme.spacingSM, horizontal: AppTheme.spacingSM),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(AppTheme.radiusSM),
@@ -205,8 +219,11 @@ class _SummaryChip extends StatelessWidget {
         children: [
           Icon(icon, color: color, size: 20),
           const SizedBox(height: 2),
-          Text(value, style: AppTheme.bodyLarge.copyWith(color: color, fontWeight: FontWeight.bold)),
-          Text(label, style: AppTheme.bodySmall, overflow: TextOverflow.ellipsis),
+          Text(value,
+              style: AppTheme.bodyLarge
+                  .copyWith(color: color, fontWeight: FontWeight.bold)),
+          Text(label,
+              style: AppTheme.bodySmall, overflow: TextOverflow.ellipsis),
         ],
       ),
     );
@@ -234,11 +251,13 @@ class _RecordCard extends StatelessWidget {
               Flexible(
                 child: Text(
                   DateFormatter.format(record.date),
-                  style: AppTheme.bodyLarge.copyWith(fontWeight: FontWeight.bold),
+                  style:
+                      AppTheme.bodyLarge.copyWith(fontWeight: FontWeight.bold),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Icon(Icons.calendar_today, size: 16, color: AppTheme.textSecondary),
+              Icon(Icons.calendar_today,
+                  size: 16, color: AppTheme.textSecondary),
             ],
           ),
           const Divider(height: AppTheme.spacingLG),
@@ -267,12 +286,14 @@ class _RecordCard extends StatelessWidget {
                   color: AppTheme.infoColor),
             ],
           ),
-          if (record.healthObservations != null && record.healthObservations!.isNotEmpty) ...[
+          if (record.healthObservations != null &&
+              record.healthObservations!.isNotEmpty) ...[
             const SizedBox(height: AppTheme.spacingSM),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.health_and_safety, size: 16, color: AppTheme.warningColor),
+                Icon(Icons.health_and_safety,
+                    size: 16, color: AppTheme.warningColor),
                 const SizedBox(width: 4),
                 Flexible(
                   child: Text(
@@ -329,7 +350,8 @@ class _StatItem extends StatelessWidget {
         children: [
           Icon(icon, color: color, size: 18),
           const SizedBox(height: 2),
-          Text(value, style: AppTheme.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
+          Text(value,
+              style: AppTheme.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
           Text(label, style: AppTheme.bodySmall),
         ],
       ),
@@ -390,7 +412,8 @@ class _AddRecordSheetState extends State<_AddRecordSheet> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Date already recorded'),
-          content: Text('You already have a record for $dateStr. Overwrite it?'),
+          content:
+              Text('You already have a record for $dateStr. Overwrite it?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -411,40 +434,45 @@ class _AddRecordSheetState extends State<_AddRecordSheet> {
     }
 
     final mortality = int.tryParse(_mortalityController.text.trim()) ?? 0;
-final flock = context.read<FlockProvider>().selectedFlock;
-final currentBirds = flock?.birdCount ?? 0;
+    final flock = context.read<FlockProvider>().selectedFlock;
+    final currentBirds = flock?.birdCount ?? 0;
 
-if (mortality > currentBirds) {
-  setState(() => _isSaving = false);
-  if (mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-            'Cannot record $mortality deaths — only $currentBirds birds alive'),
-        backgroundColor: AppTheme.errorColor,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-  return;
-}
+    if (mortality > currentBirds) {
+      setState(() => _isSaving = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Cannot record $mortality deaths — only $currentBirds birds alive'),
+            backgroundColor: AppTheme.errorColor,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
 
-await context.read<DailyRecordProvider>().addRecord(
+    await context.read<DailyRecordProvider>().addRecord(
           flockId: widget.flockId,
           date: dateStr,
           eggsCollected: int.tryParse(_eggsController.text.trim()) ?? 0,
           mortalityCount: mortality,
           feedGiven: double.tryParse(_feedController.text.trim()) ?? 0.0,
           waterGiven: double.tryParse(_waterController.text.trim()) ?? 0.0,
-          healthObservations: _healthController.text.trim().isEmpty ? null : _healthController.text.trim(),
-          notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+          healthObservations: _healthController.text.trim().isEmpty
+              ? null
+              : _healthController.text.trim(),
+          notes: _notesController.text.trim().isEmpty
+              ? null
+              : _notesController.text.trim(),
         );
 
     if (mortality > 0) {
       final flockProvider = context.read<FlockProvider>();
       final flock = flockProvider.selectedFlock;
       if (flock != null) {
-        final newCount = (flock.birdCount - mortality).clamp(0, flock.birdCount);
+        final newCount =
+            (flock.birdCount - mortality).clamp(0, flock.birdCount);
         await flockProvider.updateFlock(flock.copyWith(birdCount: newCount));
       }
     }
@@ -492,13 +520,14 @@ await context.read<DailyRecordProvider>().addRecord(
                 child: Container(
                   width: 40,
                   height: 4,
-                  decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+                  decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2)),
                 ),
               ),
               const SizedBox(height: AppTheme.spacingMD),
               Text('Add / Update Daily Record', style: AppTheme.headingSmall),
               const SizedBox(height: AppTheme.spacingMD),
-
               GestureDetector(
                 onTap: () async {
                   final picked = await showDatePicker(
@@ -513,7 +542,8 @@ await context.read<DailyRecordProvider>().addRecord(
                     if (exists) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Record already exists for ${DateFormatter.format(picked.toIso8601String().split('T').first)} — will overwrite if saved.'),
+                          content: Text(
+                              'Record already exists for ${DateFormatter.format(picked.toIso8601String().split('T').first)} — will overwrite if saved.'),
                           backgroundColor: AppTheme.warningColor,
                         ),
                       );
@@ -531,7 +561,8 @@ await context.read<DailyRecordProvider>().addRecord(
                       Icon(Icons.calendar_today, color: AppTheme.primaryColor),
                       const SizedBox(width: AppTheme.spacingSM),
                       Text(
-                        DateFormatter.format(_selectedDate.toIso8601String().split('T').first),
+                        DateFormatter.format(
+                            _selectedDate.toIso8601String().split('T').first),
                         style: AppTheme.bodyMedium,
                       ),
                     ],
@@ -539,13 +570,13 @@ await context.read<DailyRecordProvider>().addRecord(
                 ),
               ),
               const SizedBox(height: AppTheme.spacingMD),
-
               Row(
                 children: [
                   Expanded(
                     child: TextFormField(
                       controller: _eggsController,
-                      decoration: AppTheme.inputDecoration('Eggs Collected Today'),
+                      decoration:
+                          AppTheme.inputDecoration('Eggs Collected Today'),
                       keyboardType: TextInputType.number,
                       autofocus: true,
                     ),
@@ -554,7 +585,8 @@ await context.read<DailyRecordProvider>().addRecord(
                   Expanded(
                     child: TextFormField(
                       controller: _mortalityController,
-                      decoration: AppTheme.inputDecoration('Mortality Today').copyWith(
+                      decoration:
+                          AppTheme.inputDecoration('Mortality Today').copyWith(
                         hintText: '0 — $currentBirds birds alive',
                       ),
                       keyboardType: TextInputType.number,
@@ -563,14 +595,14 @@ await context.read<DailyRecordProvider>().addRecord(
                 ],
               ),
               const SizedBox(height: AppTheme.spacingMD),
-
               Row(
                 children: [
                   Expanded(
                     child: TextFormField(
                       controller: _feedController,
                       decoration: AppTheme.inputDecoration('Feed Given (kg)'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                     ),
                   ),
                   const SizedBox(width: AppTheme.spacingSM),
@@ -578,27 +610,26 @@ await context.read<DailyRecordProvider>().addRecord(
                     child: TextFormField(
                       controller: _waterController,
                       decoration: AppTheme.inputDecoration('Water Given (L)'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: AppTheme.spacingMD),
-
               TextFormField(
                 controller: _healthController,
-                decoration: AppTheme.inputDecoration('Health Observations (optional)'),
+                decoration:
+                    AppTheme.inputDecoration('Health Observations (optional)'),
                 maxLines: 2,
               ),
               const SizedBox(height: AppTheme.spacingMD),
-
               TextFormField(
                 controller: _notesController,
                 decoration: AppTheme.inputDecoration('Notes (optional)'),
                 maxLines: 2,
               ),
               const SizedBox(height: AppTheme.spacingLG),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -608,7 +639,8 @@ await context.read<DailyRecordProvider>().addRecord(
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2),
                         )
                       : const Text('Save Record'),
                 ),

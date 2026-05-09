@@ -100,6 +100,7 @@ class FlockProvider extends ChangeNotifier {
         notes: notes,
         createdAt: now,
         updatedAt: now,
+        userId: null,
       );
 
       await createFlock(newFlock);

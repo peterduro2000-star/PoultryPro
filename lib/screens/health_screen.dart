@@ -16,30 +16,35 @@ class HealthScreen extends StatefulWidget {
 }
 
 class _HealthScreenState extends State<HealthScreen> {
- @override
-void initState() {
-  super.initState();
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    final flock = context.read<FlockProvider>().selectedFlock;
+  FlockProvider? _flockProvider;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_flockProvider != null) return;
+
+    _flockProvider = context.read<FlockProvider>();
+    _flockProvider!.addListener(_onFlockChanged);
+
+    final flock = _flockProvider!.selectedFlock;
     if (flock != null) {
       context.read<HealthProvider>().loadHealthEvents(flock.id);
     }
-    context.read<FlockProvider>().addListener(_onFlockChanged);
-  });
-}
-
-void _onFlockChanged() {
-  final flock = context.read<FlockProvider>().selectedFlock;
-  if (flock != null) {
-    context.read<HealthProvider>().loadHealthEvents(flock.id);
   }
-}
 
-@override
-void dispose() {
-  context.read<FlockProvider>().removeListener(_onFlockChanged);
-  super.dispose();
-}
+  void _onFlockChanged() {
+    final flock = _flockProvider?.selectedFlock;
+    if (flock != null && mounted) {
+      context.read<HealthProvider>().loadHealthEvents(flock.id);
+    }
+  }
+
+  @override
+  void dispose() {
+    _flockProvider?.removeListener(_onFlockChanged);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,8 +66,7 @@ void dispose() {
                             size: 48,
                             color: AppTheme.primaryColor.withOpacity(0.4)),
                         const SizedBox(height: AppTheme.spacingMD),
-                        Text('No flock selected',
-                            style: AppTheme.headingSmall),
+                        Text('No flock selected', style: AppTheme.headingSmall),
                         const SizedBox(height: AppTheme.spacingSM),
                         Text('Go to Home screen to select a flock',
                             style: AppTheme.bodyMedium),
@@ -78,8 +82,8 @@ void dispose() {
                     if (provider.error != null) {
                       return Center(
                           child: Text(provider.error!,
-                              style: AppTheme.bodyMedium.copyWith(
-                                  color: AppTheme.errorColor)));
+                              style: AppTheme.bodyMedium
+                                  .copyWith(color: AppTheme.errorColor)));
                     }
                     if (provider.events.isEmpty) {
                       return Center(
@@ -124,7 +128,8 @@ void dispose() {
             ? const SizedBox.shrink()
             : FloatingActionButton(
                 heroTag: 'health_fab',
-                onPressed: () => _showAddSheet(context, provider.selectedFlock!.id),
+                onPressed: () =>
+                    _showAddSheet(context, provider.selectedFlock!.id),
                 child: const Icon(Icons.add),
               ),
       ),
@@ -198,7 +203,8 @@ class _SummaryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingSM, horizontal: AppTheme.spacingSM),
+      padding: const EdgeInsets.symmetric(
+          vertical: AppTheme.spacingSM, horizontal: AppTheme.spacingSM),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(AppTheme.radiusSM),
@@ -208,7 +214,8 @@ class _SummaryChip extends StatelessWidget {
           Icon(icon, color: color, size: 20),
           const SizedBox(height: 2),
           Text(value,
-              style: AppTheme.bodyLarge.copyWith(color: color, fontWeight: FontWeight.bold)),
+              style: AppTheme.bodyLarge
+                  .copyWith(color: color, fontWeight: FontWeight.bold)),
           Text(label,
               style: AppTheme.bodySmall,
               textAlign: TextAlign.center,
@@ -274,7 +281,8 @@ class _HealthEventCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(event.eventType.toUpperCase(),
-                        style: AppTheme.bodySmall.copyWith(color: _severityColor)),
+                        style:
+                            AppTheme.bodySmall.copyWith(color: _severityColor)),
                     Flexible(
                       child: Text(event.description,
                           style: AppTheme.bodyLarge,
@@ -288,7 +296,9 @@ class _HealthEventCard extends StatelessWidget {
                   style: AppTheme.bodySmall),
             ],
           ),
-          if (event.medicine != null || event.dosage != null || event.affectedBirds != null) ...[
+          if (event.medicine != null ||
+              event.dosage != null ||
+              event.affectedBirds != null) ...[
             const Divider(height: AppTheme.spacingLG),
             Wrap(
               spacing: AppTheme.spacingSM,
@@ -328,7 +338,8 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingSM, vertical: 4),
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppTheme.spacingSM, vertical: 4),
       decoration: BoxDecoration(
         color: AppTheme.backgroundColor,
         borderRadius: BorderRadius.circular(AppTheme.radiusSM),
@@ -402,8 +413,12 @@ class _AddHealthEventSheetState extends State<_AddHealthEventSheet> {
           title: const Text('Date already logged'),
           content: Text('You have a health event for $dateStr. Overwrite?'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Overwrite')),
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Overwrite')),
           ],
         ),
       );
@@ -423,9 +438,15 @@ class _AddHealthEventSheetState extends State<_AddHealthEventSheet> {
           description: _descController.text.trim(),
           severity: _severity,
           affectedBirds: affected,
-          medicine: _medicineController.text.trim().isEmpty ? null : _medicineController.text.trim(),
-          dosage: _dosageController.text.trim().isEmpty ? null : _dosageController.text.trim(),
-          notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+          medicine: _medicineController.text.trim().isEmpty
+              ? null
+              : _medicineController.text.trim(),
+          dosage: _dosageController.text.trim().isEmpty
+              ? null
+              : _dosageController.text.trim(),
+          notes: _notesController.text.trim().isEmpty
+              ? null
+              : _notesController.text.trim(),
         );
 
     if (mounted) {
@@ -468,7 +489,9 @@ class _AddHealthEventSheetState extends State<_AddHealthEventSheet> {
                 child: Container(
                   width: 40,
                   height: 4,
-                  decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+                  decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2)),
                 ),
               ),
               const SizedBox(height: AppTheme.spacingMD),
@@ -489,7 +512,8 @@ class _AddHealthEventSheetState extends State<_AddHealthEventSheet> {
                     if (exists) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Event already logged for ${DateFormatter.format(picked.toIso8601String().split('T').first)} — will overwrite if saved.'),
+                          content: Text(
+                              'Event already logged for ${DateFormatter.format(picked.toIso8601String().split('T').first)} — will overwrite if saved.'),
                           backgroundColor: AppTheme.warningColor,
                         ),
                       );
@@ -506,7 +530,9 @@ class _AddHealthEventSheetState extends State<_AddHealthEventSheet> {
                     children: [
                       Icon(Icons.calendar_today, color: AppTheme.primaryColor),
                       const SizedBox(width: AppTheme.spacingSM),
-                      Text(DateFormatter.format(_selectedDate.toIso8601String().split('T').first),
+                      Text(
+                          DateFormatter.format(
+                              _selectedDate.toIso8601String().split('T').first),
                           style: AppTheme.bodyMedium),
                     ],
                   ),
@@ -520,7 +546,10 @@ class _AddHealthEventSheetState extends State<_AddHealthEventSheet> {
                     child: DropdownButtonFormField<String>(
                       value: _eventType,
                       decoration: AppTheme.inputDecoration('Event Type *'),
-                      items: _eventTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                      items: _eventTypes
+                          .map(
+                              (t) => DropdownMenuItem(value: t, child: Text(t)))
+                          .toList(),
                       onChanged: (v) => setState(() => _eventType = v!),
                       validator: (v) => v == null ? 'Required' : null,
                     ),
@@ -529,10 +558,13 @@ class _AddHealthEventSheetState extends State<_AddHealthEventSheet> {
                   Expanded(
                     child: DropdownButtonFormField<String?>(
                       value: _severity,
-                      decoration: AppTheme.inputDecoration('Severity (optional)'),
+                      decoration:
+                          AppTheme.inputDecoration('Severity (optional)'),
                       items: [
-                        const DropdownMenuItem(value: null, child: Text('None')),
-                        ..._severities.map((s) => DropdownMenuItem(value: s, child: Text(s.toUpperCase()))),
+                        const DropdownMenuItem(
+                            value: null, child: Text('None')),
+                        ..._severities.map((s) => DropdownMenuItem(
+                            value: s, child: Text(s.toUpperCase()))),
                       ],
                       onChanged: (v) => setState(() => _severity = v),
                     ),
@@ -544,20 +576,23 @@ class _AddHealthEventSheetState extends State<_AddHealthEventSheet> {
               TextFormField(
                 controller: _descController,
                 decoration: AppTheme.inputDecoration('Description *'),
-                validator: (v) => v!.trim().isEmpty ? 'Please enter a description' : null,
+                validator: (v) =>
+                    v!.trim().isEmpty ? 'Please enter a description' : null,
               ),
               const SizedBox(height: AppTheme.spacingMD),
 
               TextFormField(
                 controller: _affectedController,
-                decoration: AppTheme.inputDecoration('Birds Affected (0 if none)'),
+                decoration:
+                    AppTheme.inputDecoration('Birds Affected (0 if none)'),
                 keyboardType: TextInputType.number,
               ),
               const SizedBox(height: AppTheme.spacingMD),
 
               TextFormField(
                 controller: _medicineController,
-                decoration: AppTheme.inputDecoration('Medicine Used (optional)'),
+                decoration:
+                    AppTheme.inputDecoration('Medicine Used (optional)'),
               ),
               const SizedBox(height: AppTheme.spacingMD),
 
@@ -577,7 +612,8 @@ class _AddHealthEventSheetState extends State<_AddHealthEventSheet> {
                 child: Container(
                   padding: const EdgeInsets.all(AppTheme.spacingMD),
                   decoration: BoxDecoration(
-                    border: Border.all(color: AppTheme.textSecondary.withOpacity(0.5)),
+                    border: Border.all(
+                        color: AppTheme.textSecondary.withOpacity(0.5)),
                     borderRadius: BorderRadius.circular(AppTheme.radiusSM),
                   ),
                   child: Row(
@@ -585,7 +621,8 @@ class _AddHealthEventSheetState extends State<_AddHealthEventSheet> {
                       Icon(Icons.camera_alt, color: AppTheme.textSecondary),
                       const SizedBox(width: AppTheme.spacingSM),
                       Text('Add Photo (optional - coming soon)',
-                          style: AppTheme.bodyMedium.copyWith(color: AppTheme.textSecondary)),
+                          style: AppTheme.bodyMedium
+                              .copyWith(color: AppTheme.textSecondary)),
                     ],
                   ),
                 ),
@@ -608,7 +645,8 @@ class _AddHealthEventSheetState extends State<_AddHealthEventSheet> {
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2),
                         )
                       : const Text('Save Health Event'),
                 ),

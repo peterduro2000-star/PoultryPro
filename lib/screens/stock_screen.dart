@@ -18,49 +18,53 @@ class StockScreen extends StatefulWidget {
 
 class _StockScreenState extends State<StockScreen> {
   String _filterType = 'all';
+  FlockProvider? _flockProvider;
 
   @override
-void initState() {
-  super.initState();
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    final flock = context.read<FlockProvider>().selectedFlock;
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_flockProvider != null) return;
+
+    _flockProvider = context.read<FlockProvider>();
+    _flockProvider!.addListener(_onFlockChanged);
+
+    final flock = _flockProvider!.selectedFlock;
     if (flock != null) {
       context.read<StockProvider>().loadStock(flock.id);
     }
-    context.read<FlockProvider>().addListener(_onFlockChanged);
-  });
-}
-
-void _onFlockChanged() {
-  final flock = context.read<FlockProvider>().selectedFlock;
-  if (flock != null) {
-    context.read<StockProvider>().loadStock(flock.id);
   }
-}
 
-@override
-void dispose() {
-  context.read<FlockProvider>().removeListener(_onFlockChanged);
-  super.dispose();
-}
+  void _onFlockChanged() {
+    final flock = _flockProvider?.selectedFlock;
+    if (flock != null && mounted) {
+      context.read<StockProvider>().loadStock(flock.id);
+    }
+  }
+
+  @override
+  void dispose() {
+    _flockProvider?.removeListener(_onFlockChanged);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-  title: const Text('Stock'),
-  actions: [
-    IconButton(
-      icon: const Icon(Icons.calculate_outlined),
-      tooltip: 'Calculators',
-      onPressed: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ToolsScreen()),
+        title: const Text('Stock'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.calculate_outlined),
+            tooltip: 'Calculators',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ToolsScreen()),
+            ),
+          ),
+        ],
       ),
-    ),
-  ],
-),
       body: Column(
         children: [
           const FlockHeader(),
@@ -76,8 +80,7 @@ void dispose() {
                             size: 48,
                             color: AppTheme.primaryColor.withOpacity(0.4)),
                         const SizedBox(height: AppTheme.spacingMD),
-                        Text('No flock selected',
-                            style: AppTheme.headingSmall),
+                        Text('No flock selected', style: AppTheme.headingSmall),
                         const SizedBox(height: AppTheme.spacingSM),
                         Text('Go to Home screen to select a flock',
                             style: AppTheme.bodyMedium),
@@ -103,8 +106,7 @@ void dispose() {
                           children: [
                             Icon(Icons.inventory_2,
                                 size: 80,
-                                color:
-                                    AppTheme.primaryColor.withOpacity(0.3)),
+                                color: AppTheme.primaryColor.withOpacity(0.3)),
                             const SizedBox(height: AppTheme.spacingMD),
                             Text('No stock items yet',
                                 style: AppTheme.headingSmall),
@@ -138,8 +140,7 @@ void dispose() {
                         // Stock list
                         Expanded(
                           child: ListView.builder(
-                            padding:
-                                const EdgeInsets.all(AppTheme.spacingMD),
+                            padding: const EdgeInsets.all(AppTheme.spacingMD),
                             itemCount: filtered.length,
                             itemBuilder: (context, index) => _StockCard(
                               stock: filtered[index],
@@ -161,9 +162,9 @@ void dispose() {
         builder: (context, provider, _) => provider.selectedFlock == null
             ? const SizedBox.shrink()
             : FloatingActionButton(
-              heroTag: 'stock_fab',
-                onPressed: () => _showAddStockSheet(
-                    context, provider.selectedFlock!.id),
+                heroTag: 'stock_fab',
+                onPressed: () =>
+                    _showAddStockSheet(context, provider.selectedFlock!.id),
                 child: const Icon(Icons.add),
               ),
       ),
@@ -196,8 +197,7 @@ void dispose() {
           left: AppTheme.spacingMD,
           right: AppTheme.spacingMD,
           top: AppTheme.spacingMD,
-          bottom:
-              MediaQuery.of(context).viewInsets.bottom + AppTheme.spacingMD,
+          bottom: MediaQuery.of(context).viewInsets.bottom + AppTheme.spacingMD,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -213,8 +213,7 @@ void dispose() {
               ),
             ),
             const SizedBox(height: AppTheme.spacingMD),
-            Text('Restock: ${stock.itemName}',
-                style: AppTheme.headingSmall),
+            Text('Restock: ${stock.itemName}', style: AppTheme.headingSmall),
             Text('Current: ${stock.quantity} ${stock.unit}',
                 style: AppTheme.bodySmall),
             const SizedBox(height: AppTheme.spacingMD),
@@ -237,9 +236,9 @@ void dispose() {
                   final stockProvider = context.read<StockProvider>();
                   await stockProvider.updateStock(
                     stock.copyWith(
-                    quantity: stock.quantity + qty,
-                    lastRestockDate:
-                      DateTime.now().toIso8601String().split('T').first,
+                      quantity: stock.quantity + qty,
+                      lastRestockDate:
+                          DateTime.now().toIso8601String().split('T').first,
                     ),
                   );
                   if (sheetContext.mounted) Navigator.pop(sheetContext);
@@ -406,8 +405,7 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isSelected = selected == value;
-    final color =
-        alertColor ? AppTheme.errorColor : AppTheme.primaryColor;
+    final color = alertColor ? AppTheme.errorColor : AppTheme.primaryColor;
     return GestureDetector(
       onTap: () => onSelected(value),
       child: Container(
@@ -421,8 +419,7 @@ class _FilterChip extends StatelessWidget {
           label,
           style: AppTheme.bodySmall.copyWith(
             color: isSelected ? Colors.white : color,
-            fontWeight:
-                isSelected ? FontWeight.bold : FontWeight.normal,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
           ),
         ),
       ),
@@ -466,9 +463,8 @@ class _StockCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(AppTheme.radiusMD),
-        border: isLow
-            ? Border.all(color: AppTheme.errorColor, width: 1.5)
-            : null,
+        border:
+            isLow ? Border.all(color: AppTheme.errorColor, width: 1.5) : null,
         boxShadow: [AppTheme.shadowMD],
       ),
       padding: const EdgeInsets.all(AppTheme.spacingMD),
@@ -512,8 +508,7 @@ class _StockCard extends StatelessWidget {
                       ],
                     ),
                     Text(stock.itemType.toUpperCase(),
-                        style: AppTheme.bodySmall
-                            .copyWith(color: _typeColor)),
+                        style: AppTheme.bodySmall.copyWith(color: _typeColor)),
                   ],
                 ),
               ),
@@ -555,12 +550,12 @@ class _StockCard extends StatelessWidget {
             Row(
               children: [
                 if (stock.supplier != null)
-                  _InfoTag(
-                      icon: Icons.store, label: stock.supplier!),
+                  _InfoTag(icon: Icons.store, label: stock.supplier!),
                 if (stock.expiryDate != null)
                   _InfoTag(
                       icon: Icons.event,
-                      label: 'Exp: ${DateFormatter.formatShort(stock.expiryDate!)}'),
+                      label:
+                          'Exp: ${DateFormatter.formatShort(stock.expiryDate!)}'),
               ],
             ),
           ],
@@ -587,8 +582,8 @@ class _StockMetric extends StatelessWidget {
           Text(label, style: AppTheme.bodySmall),
           const SizedBox(height: 2),
           Text(value,
-              style: AppTheme.bodyMedium.copyWith(
-                  color: color, fontWeight: FontWeight.w600),
+              style: AppTheme.bodyMedium
+                  .copyWith(color: color, fontWeight: FontWeight.w600),
               overflow: TextOverflow.ellipsis),
         ],
       ),
@@ -606,8 +601,7 @@ class _InfoTag extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(right: AppTheme.spacingSM),
-      padding:
-          const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         color: AppTheme.backgroundColor,
         borderRadius: BorderRadius.circular(AppTheme.radiusSM),
@@ -676,9 +670,8 @@ class _AddStockSheetState extends State<_AddStockSheet> {
           supplier: _supplierController.text.isEmpty
               ? null
               : _supplierController.text,
-          expiryDate: _expiryController.text.isEmpty
-              ? null
-              : _expiryController.text,
+          expiryDate:
+              _expiryController.text.isEmpty ? null : _expiryController.text,
         );
 
     if (mounted) Navigator.pop(context);
@@ -695,8 +688,7 @@ class _AddStockSheetState extends State<_AddStockSheet> {
         left: AppTheme.spacingMD,
         right: AppTheme.spacingMD,
         top: AppTheme.spacingMD,
-        bottom:
-            MediaQuery.of(context).viewInsets.bottom + AppTheme.spacingMD,
+        bottom: MediaQuery.of(context).viewInsets.bottom + AppTheme.spacingMD,
       ),
       child: SingleChildScrollView(
         child: Form(
@@ -725,8 +717,8 @@ class _AddStockSheetState extends State<_AddStockSheet> {
                       value: _itemType,
                       decoration: AppTheme.inputDecoration('Type'),
                       items: _itemTypes
-                          .map((t) =>
-                              DropdownMenuItem(value: t, child: Text(t)))
+                          .map(
+                              (t) => DropdownMenuItem(value: t, child: Text(t)))
                           .toList(),
                       onChanged: (v) => setState(() => _itemType = v!),
                     ),
@@ -737,8 +729,8 @@ class _AddStockSheetState extends State<_AddStockSheet> {
                       value: _unit,
                       decoration: AppTheme.inputDecoration('Unit'),
                       items: _units
-                          .map((u) =>
-                              DropdownMenuItem(value: u, child: Text(u)))
+                          .map(
+                              (u) => DropdownMenuItem(value: u, child: Text(u)))
                           .toList(),
                       onChanged: (v) => setState(() => _unit = v!),
                     ),
@@ -749,8 +741,7 @@ class _AddStockSheetState extends State<_AddStockSheet> {
               TextFormField(
                 controller: _nameController,
                 decoration: AppTheme.inputDecoration('Item Name'),
-                validator: (v) =>
-                    v!.isEmpty ? 'Please enter item name' : null,
+                validator: (v) => v!.isEmpty ? 'Please enter item name' : null,
               ),
               const SizedBox(height: AppTheme.spacingMD),
               Row(
@@ -758,24 +749,20 @@ class _AddStockSheetState extends State<_AddStockSheet> {
                   Expanded(
                     child: TextFormField(
                       controller: _quantityController,
-                      decoration:
-                          AppTheme.inputDecoration('Current Quantity'),
-                      keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
-                      validator: (v) =>
-                          v!.isEmpty ? 'Required' : null,
+                      decoration: AppTheme.inputDecoration('Current Quantity'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      validator: (v) => v!.isEmpty ? 'Required' : null,
                     ),
                   ),
                   const SizedBox(width: AppTheme.spacingSM),
                   Expanded(
                     child: TextFormField(
                       controller: _minThresholdController,
-                      decoration:
-                          AppTheme.inputDecoration('Min Threshold'),
-                      keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
-                      validator: (v) =>
-                          v!.isEmpty ? 'Required' : null,
+                      decoration: AppTheme.inputDecoration('Min Threshold'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      validator: (v) => v!.isEmpty ? 'Required' : null,
                     ),
                   ),
                 ],
@@ -783,8 +770,7 @@ class _AddStockSheetState extends State<_AddStockSheet> {
               const SizedBox(height: AppTheme.spacingMD),
               TextFormField(
                 controller: _costController,
-                decoration:
-                    AppTheme.inputDecoration('Cost per ${_unit} (₦)'),
+                decoration: AppTheme.inputDecoration('Cost per ${_unit} (₦)'),
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 validator: (v) => v!.isEmpty ? 'Required' : null,
@@ -792,8 +778,7 @@ class _AddStockSheetState extends State<_AddStockSheet> {
               const SizedBox(height: AppTheme.spacingMD),
               TextFormField(
                 controller: _supplierController,
-                decoration:
-                    AppTheme.inputDecoration('Supplier (optional)'),
+                decoration: AppTheme.inputDecoration('Supplier (optional)'),
               ),
               const SizedBox(height: AppTheme.spacingMD),
               TextFormField(

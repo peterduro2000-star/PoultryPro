@@ -20,151 +20,154 @@ class FinanceScreen extends StatefulWidget {
 class _FinanceScreenState extends State<FinanceScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  FlockProvider? _flockProvider;
 
   @override
- @override
-void initState() {
-  super.initState();
-  _tabController = TabController(length: 3, vsync: this);
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    final flock = context.read<FlockProvider>().selectedFlock;
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_flockProvider != null) return;
+
+    _flockProvider = context.read<FlockProvider>();
+    _flockProvider!.addListener(_onFlockChanged);
+
+    final flock = _flockProvider!.selectedFlock;
     if (flock != null) {
       context.read<FinanceProvider>().loadFinanceData(flock.id);
     }
-    context.read<FlockProvider>().addListener(_onFlockChanged);
-  });
-}
-
-void _onFlockChanged() {
-  final flock = context.read<FlockProvider>().selectedFlock;
-  if (flock != null) {
-    context.read<FinanceProvider>().loadFinanceData(flock.id);
   }
-}
 
-@override
-void dispose() {
-  _tabController.dispose();
-  context.read<FlockProvider>().removeListener(_onFlockChanged);
-  super.dispose();
-}
-
+  void _onFlockChanged() {
+    final flock = _flockProvider?.selectedFlock;
+    if (flock != null && mounted) {
+      context.read<FinanceProvider>().loadFinanceData(flock.id);
+    }
+  }
 
   @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    backgroundColor: AppTheme.backgroundColor,
-    appBar: AppBar(
-      title: const Text('Finance'),
-    ),
-    body: Column(
-      children: [
-        const FlockHeader(),
+  void dispose() {
+    _tabController.dispose();
+    _flockProvider?.removeListener(_onFlockChanged);
+    super.dispose();
+  }
 
-        // ── Visible Tab Selector ─────────────────────────────────────
-        Container(
-          margin: const EdgeInsets.fromLTRB(
-              AppTheme.spacingMD, AppTheme.spacingMD,
-              AppTheme.spacingMD, 0),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(AppTheme.radiusMD),
-            boxShadow: const [AppTheme.shadowSM],
-          ),
-          child: TabBar(
-            controller: _tabController,
-            indicator: BoxDecoration(
-              color: AppTheme.primaryColor,
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
+      appBar: AppBar(
+        title: const Text('Finance'),
+      ),
+      body: Column(
+        children: [
+          const FlockHeader(),
+
+          // ── Visible Tab Selector ─────────────────────────────────────
+          Container(
+            margin: const EdgeInsets.fromLTRB(
+                AppTheme.spacingMD, AppTheme.spacingMD, AppTheme.spacingMD, 0),
+            decoration: BoxDecoration(
+              color: Colors.white,
               borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+              boxShadow: const [AppTheme.shadowSM],
             ),
-            labelColor: Colors.white,
-            unselectedLabelColor: AppTheme.textSecondary,
-            dividerColor: Colors.transparent,
-            tabs: const [
-              Tab(text: 'Expenses'),
-              Tab(text: 'Sales'),
-              Tab(text: 'Profit'),
-            ],
+            child: TabBar(
+              controller: _tabController,
+              indicator: BoxDecoration(
+                color: AppTheme.primaryColor,
+                borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+              ),
+              labelColor: Colors.white,
+              unselectedLabelColor: AppTheme.textSecondary,
+              dividerColor: Colors.transparent,
+              tabs: const [
+                Tab(text: 'Expenses'),
+                Tab(text: 'Sales'),
+                Tab(text: 'Profit'),
+              ],
+            ),
           ),
-        ),
 
-        Expanded(
-          child: Consumer<FlockProvider>(
-            builder: (context, flockProvider, _) {
-              if (flockProvider.selectedFlock == null) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.home,
-                          size: 48,
-                          color: AppTheme.primaryColor.withOpacity(0.4)),
-                      const SizedBox(height: AppTheme.spacingMD),
-                      Text('No flock selected',
-                          style: AppTheme.headingSmall),
-                      const SizedBox(height: AppTheme.spacingSM),
-                      Text('Go to Home screen to select a flock',
-                          style: AppTheme.bodyMedium),
-                    ],
-                  ),
-                );
-              }
-              return Consumer<FinanceProvider>(
-                builder: (context, provider, _) {
-                  if (provider.isLoading) {
-                    return const Center(
-                        child: CircularProgressIndicator());
-                  }
-                  if (provider.error != null) {
-                    return Center(
-                        child: Text(provider.error!,
-                            style: AppTheme.bodyMedium.copyWith(
-                                color: AppTheme.errorColor)));
-                  }
-                  return Column(
-                    children: [
-                      const SizedBox(height: AppTheme.spacingMD),
-                      _SummaryBar(provider: provider),
-                      Expanded(
-                        child: TabBarView(
-                          controller: _tabController,
-                          children: [
-                            _ExpensesList(expenses: provider.expenses),
-                            _SalesList(sales: provider.sales),
-                            _ProfitTab(
-                              provider: provider,
-                              flock: flockProvider.selectedFlock!,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+          Expanded(
+            child: Consumer<FlockProvider>(
+              builder: (context, flockProvider, _) {
+                if (flockProvider.selectedFlock == null) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.home,
+                            size: 48,
+                            color: AppTheme.primaryColor.withOpacity(0.4)),
+                        const SizedBox(height: AppTheme.spacingMD),
+                        Text('No flock selected', style: AppTheme.headingSmall),
+                        const SizedBox(height: AppTheme.spacingSM),
+                        Text('Go to Home screen to select a flock',
+                            style: AppTheme.bodyMedium),
+                      ],
+                    ),
                   );
-                },
-              );
-            },
-          ),
-        ),
-      ],
-    ),
-    floatingActionButton: Consumer<FlockProvider>(
-      builder: (context, provider, _) =>
-          provider.selectedFlock == null
-              ? const SizedBox.shrink()
-              : ListenableBuilder(
-                  listenable: _tabController,
-                  builder: (context, _) => _tabController.index == 2
-                      ? const SizedBox.shrink()
-                      : FloatingActionButton(
-                          heroTag: 'finance_fab',
-                          onPressed: () => _showAddSheet(
-                              context, provider.selectedFlock!.id),
-                          child: const Icon(Icons.add),
+                }
+                return Consumer<FinanceProvider>(
+                  builder: (context, provider, _) {
+                    if (provider.isLoading) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (provider.error != null) {
+                      return Center(
+                          child: Text(provider.error!,
+                              style: AppTheme.bodyMedium
+                                  .copyWith(color: AppTheme.errorColor)));
+                    }
+                    return Column(
+                      children: [
+                        const SizedBox(height: AppTheme.spacingMD),
+                        _SummaryBar(provider: provider),
+                        Expanded(
+                          child: TabBarView(
+                            controller: _tabController,
+                            children: [
+                              _ExpensesList(expenses: provider.expenses),
+                              _SalesList(sales: provider.sales),
+                              _ProfitTab(
+                                provider: provider,
+                                flock: flockProvider.selectedFlock!,
+                              ),
+                            ],
+                          ),
                         ),
-                ),
-    ),
-  );
-}
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: Consumer<FlockProvider>(
+        builder: (context, provider, _) => provider.selectedFlock == null
+            ? const SizedBox.shrink()
+            : ListenableBuilder(
+                listenable: _tabController,
+                builder: (context, _) => _tabController.index == 2
+                    ? const SizedBox.shrink()
+                    : FloatingActionButton(
+                        heroTag: 'finance_fab',
+                        onPressed: () =>
+                            _showAddSheet(context, provider.selectedFlock!.id),
+                        child: const Icon(Icons.add),
+                      ),
+              ),
+      ),
+    );
+  }
 
   void _showAddSheet(BuildContext context, String flockId) {
     final flock = context.read<FlockProvider>().selectedFlock!;
@@ -287,14 +290,12 @@ class _ProfitTab extends StatelessWidget {
     final suggestedAt50 = costPerBird * 1.50;
 
     // Profit per bird
-    final profitPerBird = currentBirdCount > 0
-        ? netProfit / currentBirdCount
-        : 0.0;
+    final profitPerBird =
+        currentBirdCount > 0 ? netProfit / currentBirdCount : 0.0;
 
     // Break-even price per bird
-    final breakEvenPerBird = currentBirdCount > 0
-        ? totalExpenses / currentBirdCount
-        : 0.0;
+    final breakEvenPerBird =
+        currentBirdCount > 0 ? totalExpenses / currentBirdCount : 0.0;
 
     return ListView(
       padding: const EdgeInsets.all(AppTheme.spacingMD),
@@ -321,8 +322,8 @@ class _ProfitTab extends StatelessWidget {
               ),
               Text(
                 _formatN(netProfit.abs()),
-                style: AppTheme.headingLarge.copyWith(
-                    color: Colors.white, fontWeight: FontWeight.bold),
+                style: AppTheme.headingLarge
+                    .copyWith(color: Colors.white, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: AppTheme.spacingSM),
               Text(
@@ -406,8 +407,9 @@ class _ProfitTab extends StatelessWidget {
               _ProfitRow(
                 label: isProfit ? 'Profit per bird' : 'Loss per bird',
                 value: _formatN(profitPerBird.abs()),
-                color:
-                    profitPerBird >= 0 ? AppTheme.successColor : AppTheme.errorColor,
+                color: profitPerBird >= 0
+                    ? AppTheme.successColor
+                    : AppTheme.errorColor,
                 icon: profitPerBird >= 0
                     ? Icons.trending_up
                     : Icons.trending_down,
@@ -430,8 +432,8 @@ class _ProfitTab extends StatelessWidget {
               const SizedBox(height: AppTheme.spacingSM),
               Text(
                 'Based on cost price of ${_formatN(costPerBird)}/bird',
-                style: AppTheme.bodySmall
-                    .copyWith(color: AppTheme.textSecondary),
+                style:
+                    AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
               ),
               const SizedBox(height: AppTheme.spacingMD),
               _PriceSuggestion(
@@ -477,9 +479,8 @@ class _ProfitTab extends StatelessWidget {
                     .map((entry) {
                   final category = entry.value.key;
                   final amount = entry.value.value;
-                  final pct = totalExpenses > 0
-                      ? (amount / totalExpenses * 100)
-                      : 0.0;
+                  final pct =
+                      totalExpenses > 0 ? (amount / totalExpenses * 100) : 0.0;
                   final colors = [
                     AppTheme.primaryColor,
                     AppTheme.secondaryColor,
@@ -491,8 +492,7 @@ class _ProfitTab extends StatelessWidget {
                   ];
                   final color = colors[entry.key % colors.length];
                   return Padding(
-                    padding:
-                        const EdgeInsets.only(bottom: AppTheme.spacingSM),
+                    padding: const EdgeInsets.only(bottom: AppTheme.spacingSM),
                     child: Row(
                       children: [
                         Container(
@@ -509,12 +509,12 @@ class _ProfitTab extends StatelessWidget {
                               style: AppTheme.bodySmall),
                         ),
                         Text('${pct.toStringAsFixed(1)}%',
-                            style: AppTheme.bodySmall.copyWith(
-                                color: AppTheme.textSecondary)),
+                            style: AppTheme.bodySmall
+                                .copyWith(color: AppTheme.textSecondary)),
                         const SizedBox(width: AppTheme.spacingSM),
                         Text(_formatN(amount),
-                            style: AppTheme.bodySmall.copyWith(
-                                fontWeight: FontWeight.bold)),
+                            style: AppTheme.bodySmall
+                                .copyWith(fontWeight: FontWeight.bold)),
                       ],
                     ),
                   );
@@ -531,8 +531,7 @@ class _ProfitTab extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppTheme.warningColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(AppTheme.radiusMD),
-              border: Border.all(
-                  color: AppTheme.warningColor.withOpacity(0.4)),
+              border: Border.all(color: AppTheme.warningColor.withOpacity(0.4)),
             ),
             child: Row(
               children: [
@@ -585,15 +584,13 @@ class _ProfitRow extends StatelessWidget {
           Expanded(
             child: Text(label,
                 style: bold
-                    ? AppTheme.bodyMedium
-                        .copyWith(fontWeight: FontWeight.bold)
+                    ? AppTheme.bodyMedium.copyWith(fontWeight: FontWeight.bold)
                     : AppTheme.bodyMedium),
           ),
           Text(value,
               style: AppTheme.bodyMedium.copyWith(
                   color: color,
-                  fontWeight:
-                      bold ? FontWeight.bold : FontWeight.w600)),
+                  fontWeight: bold ? FontWeight.bold : FontWeight.w600)),
         ],
       ),
     );
@@ -643,8 +640,8 @@ class _PriceSuggestion extends StatelessWidget {
                     style: AppTheme.bodySmall
                         .copyWith(color: AppTheme.textSecondary)),
                 Text('₦${price.toStringAsFixed(0)}/bird',
-                    style: AppTheme.bodyLarge.copyWith(
-                        color: color, fontWeight: FontWeight.bold)),
+                    style: AppTheme.bodyLarge
+                        .copyWith(color: color, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -655,8 +652,8 @@ class _PriceSuggestion extends StatelessWidget {
                   style: AppTheme.bodySmall
                       .copyWith(color: AppTheme.textSecondary)),
               Text('+₦${profitPerBird.toStringAsFixed(0)}',
-                  style: AppTheme.bodyMedium.copyWith(
-                      color: color, fontWeight: FontWeight.bold)),
+                  style: AppTheme.bodyMedium
+                      .copyWith(color: color, fontWeight: FontWeight.bold)),
             ],
           ),
         ],
@@ -852,16 +849,14 @@ class _ExpensesList extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(e.description, style: AppTheme.bodyLarge),
-                    Text(
-                        '${e.category} • ${DateFormatter.formatShort(e.date)}',
+                    Text('${e.category} • ${DateFormatter.formatShort(e.date)}',
                         style: AppTheme.bodySmall),
                   ],
                 ),
               ),
               Text('₦${e.amount.toStringAsFixed(0)}',
                   style: AppTheme.bodyLarge.copyWith(
-                      color: AppTheme.errorColor,
-                      fontWeight: FontWeight.bold)),
+                      color: AppTheme.errorColor, fontWeight: FontWeight.bold)),
             ],
           ),
         );
@@ -923,8 +918,7 @@ class _SalesList extends StatelessWidget {
                         '${s.quantity} ${s.unit} • ₦${s.pricePerUnit}/unit • ${DateFormatter.formatShort(s.date)}',
                         style: AppTheme.bodySmall),
                     if (s.buyerName != null)
-                      Text('Buyer: ${s.buyerName}',
-                          style: AppTheme.bodySmall),
+                      Text('Buyer: ${s.buyerName}', style: AppTheme.bodySmall),
                   ],
                 ),
               ),
@@ -961,7 +955,13 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
   bool _isSaving = false;
 
   final _categories = [
-    'feed', 'medicine', 'labor', 'utilities', 'equipment', 'chicks', 'other'
+    'feed',
+    'medicine',
+    'labor',
+    'utilities',
+    'equipment',
+    'chicks',
+    'other'
   ];
   final _paymentMethods = ['cash', 'mobile_money', 'bank'];
 
@@ -1135,8 +1135,8 @@ class _AddSaleSheetState extends State<_AddSaleSheet> {
                     child: TextFormField(
                       controller: _quantityController,
                       decoration: AppTheme.inputDecoration('Quantity'),
-                      keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       validator: (v) {
                         if (v!.isEmpty) return 'Required';
                         if (_saleType == 'birds') {
@@ -1156,8 +1156,8 @@ class _AddSaleSheetState extends State<_AddSaleSheet> {
                       value: _unit,
                       decoration: AppTheme.inputDecoration('Unit'),
                       items: _units
-                          .map((u) =>
-                              DropdownMenuItem(value: u, child: Text(u)))
+                          .map(
+                              (u) => DropdownMenuItem(value: u, child: Text(u)))
                           .toList(),
                       onChanged: (v) => setState(() => _unit = v!),
                     ),
@@ -1175,16 +1175,14 @@ class _AddSaleSheetState extends State<_AddSaleSheet> {
               const SizedBox(height: AppTheme.spacingMD),
               TextFormField(
                 controller: _buyerController,
-                decoration:
-                    AppTheme.inputDecoration('Buyer Name (optional)'),
+                decoration: AppTheme.inputDecoration('Buyer Name (optional)'),
               ),
               const SizedBox(height: AppTheme.spacingMD),
               DropdownButtonFormField<String>(
                 value: _paymentMethod,
                 decoration: AppTheme.inputDecoration('Payment Method'),
                 items: _paymentMethods
-                    .map((p) =>
-                        DropdownMenuItem(value: p, child: Text(p)))
+                    .map((p) => DropdownMenuItem(value: p, child: Text(p)))
                     .toList(),
                 onChanged: (v) => setState(() => _paymentMethod = v!),
               ),
@@ -1207,8 +1205,7 @@ class _AddSaleSheetState extends State<_AddSaleSheet> {
 class _DatePicker extends StatelessWidget {
   final DateTime selectedDate;
   final ValueChanged<DateTime> onDatePicked;
-  const _DatePicker(
-      {required this.selectedDate, required this.onDatePicked});
+  const _DatePicker({required this.selectedDate, required this.onDatePicked});
 
   @override
   Widget build(BuildContext context) {
@@ -1264,8 +1261,7 @@ class _BottomSheet extends StatelessWidget {
         left: AppTheme.spacingMD,
         right: AppTheme.spacingMD,
         top: AppTheme.spacingMD,
-        bottom:
-            MediaQuery.of(context).viewInsets.bottom + AppTheme.spacingMD,
+        bottom: MediaQuery.of(context).viewInsets.bottom + AppTheme.spacingMD,
       ),
       child: SingleChildScrollView(
         child: Column(

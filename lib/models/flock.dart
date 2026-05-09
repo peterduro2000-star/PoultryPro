@@ -19,6 +19,7 @@ class Flock {
   final String? lastModified; // ISO 8601 string
   final String syncStatus;
   final String? serverId;
+  final String? userId;
   final bool deleted;
 
   Flock({
@@ -40,6 +41,7 @@ class Flock {
     this.lastModified,
     this.syncStatus = 'local',
     this.serverId,
+    this.userId,
     this.deleted = false,
   });
 
@@ -167,6 +169,7 @@ class Flock {
         'lastModified': lastModified,
         'syncStatus': syncStatus,
         'serverId': serverId,
+        'userId': userId,
         'deleted': deleted ? 1 : 0,
       };
 
@@ -191,6 +194,7 @@ class Flock {
         lastModified: map['lastModified'] as String?,
         syncStatus: map['syncStatus'] as String? ?? 'local',
         serverId: map['serverId'] as String?,
+        userId: map['userId'] as String?,
         deleted: (map['deleted'] as int? ?? 0) == 1,
       );
 
@@ -213,6 +217,7 @@ class Flock {
     String? lastModified,
     String? syncStatus,
     String? serverId,
+    String? userId,
     bool? deleted,
   }) {
     return Flock(
@@ -234,6 +239,7 @@ class Flock {
       lastModified: lastModified ?? this.lastModified,
       syncStatus: syncStatus ?? this.syncStatus,
       serverId: serverId ?? this.serverId,
+      userId: userId ?? this.userId,
       deleted: deleted ?? this.deleted,
     );
   }

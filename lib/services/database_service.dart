@@ -15,7 +15,7 @@ class DatabaseService {
   DatabaseService._internal();
 
   static Database? _database;
-  static const int _version = 5;
+  static const int _version = 6;
   static const String _dbName = 'poultry_pro_v3.db';
 
   // ─── Core ──────────────────────────────────────────────────────────────────
@@ -67,6 +67,7 @@ class DatabaseService {
         lastModified TEXT,
         syncStatus TEXT DEFAULT 'local',
         serverId TEXT,
+        userId TEXT,
         deleted INTEGER DEFAULT 0
       )
     ''');
@@ -251,6 +252,10 @@ class DatabaseService {
         SET initialBirdCount = birdCount
         WHERE initialBirdCount = 0 OR initialBirdCount IS NULL
       ''');
+    }
+
+    if (oldVersion < 6) {
+      await _addColumnIfNotExists(db, 'flocks', 'userId', 'TEXT');
     }
   }
 

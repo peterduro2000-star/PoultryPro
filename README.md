@@ -1,16 +1,38 @@
-# poultry_pro_new
+# Poultry Pro
 
-A new Flutter project.
+Poultry Pro is a Flutter app for poultry farmers to manage flock records,
+daily production, health events, stock, and farm finances.
 
-## Getting Started
+## Features
 
-This project is a starting point for a Flutter application.
+- Flock setup and flock-level tracking
+- Daily production, mortality, and feed records
+- Stock and inventory records
+- Health event tracking
+- Farm finance summaries
+- Local-first data storage with optional Supabase integration hooks
 
-A few resources to get you started if this is your first Flutter project:
+## Development
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+Install Flutter, then run:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```sh
+flutter pub get
+flutter analyze
+flutter test
+```
+
+## Release Build
+
+Android release signing uses `android/key.properties`, which is intentionally
+ignored by git. For Google Play, build an app bundle:
+
+```sh
+flutter build appbundle --release
+```
+
+For sideload testing, build an APK:
+
+```sh
+flutter build apk --release
+```
