@@ -9,6 +9,7 @@ import '../models/sale.dart';
 import '../models/flock.dart';
 import '../widgets/flock_header.dart';
 import '../utils/date_formatter.dart';
+import '../utils/currency_formatter.dart';
 
 class FinanceScreen extends StatefulWidget {
   const FinanceScreen({super.key});
@@ -199,19 +200,19 @@ class _SummaryBar extends StatelessWidget {
           _SummaryChip(
               icon: Icons.arrow_downward,
               label: 'Expenses',
-              value: '₦${provider.totalExpenses.toStringAsFixed(0)}',
+              value: CurrencyFormatter.format(provider.totalExpenses),
               color: AppTheme.errorColor),
           const SizedBox(width: AppTheme.spacingSM),
           _SummaryChip(
               icon: Icons.arrow_upward,
               label: 'Sales',
-              value: '₦${provider.totalSales.toStringAsFixed(0)}',
+              value: CurrencyFormatter.format(provider.totalSales),
               color: AppTheme.successColor),
           const SizedBox(width: AppTheme.spacingSM),
           _SummaryChip(
               icon: isProfit ? Icons.trending_up : Icons.trending_down,
               label: 'Profit',
-              value: '₦${provider.profit.toStringAsFixed(0)}',
+              value: CurrencyFormatter.format(provider.profit),
               color: isProfit ? AppTheme.successColor : AppTheme.errorColor),
         ],
       ),
@@ -265,11 +266,7 @@ class _ProfitTab extends StatelessWidget {
 
   const _ProfitTab({required this.provider, required this.flock});
 
-  String _formatN(double v) {
-    if (v >= 1000000) return '₦${(v / 1000000).toStringAsFixed(2)}M';
-    if (v >= 1000) return '₦${(v / 1000).toStringAsFixed(1)}k';
-    return '₦${v.toStringAsFixed(0)}';
-  }
+  String _formatN(double v) => CurrencyFormatter.format(v);
 
   @override
   Widget build(BuildContext context) {
@@ -639,7 +636,7 @@ class _PriceSuggestion extends StatelessWidget {
                 Text(label,
                     style: AppTheme.bodySmall
                         .copyWith(color: AppTheme.textSecondary)),
-                Text('₦${price.toStringAsFixed(0)}/bird',
+                Text('${CurrencyFormatter.format(price)}/bird',
                     style: AppTheme.bodyLarge
                         .copyWith(color: color, fontWeight: FontWeight.bold)),
               ],
@@ -651,7 +648,7 @@ class _PriceSuggestion extends StatelessWidget {
               Text('Profit/bird',
                   style: AppTheme.bodySmall
                       .copyWith(color: AppTheme.textSecondary)),
-              Text('+₦${profitPerBird.toStringAsFixed(0)}',
+              Text(CurrencyFormatter.formatSigned(profitPerBird),
                   style: AppTheme.bodyMedium
                       .copyWith(color: color, fontWeight: FontWeight.bold)),
             ],
@@ -760,7 +757,7 @@ class _CategoryBreakdown extends StatelessWidget {
                       ),
                       const SizedBox(width: AppTheme.spacingSM),
                       Text(
-                        '₦${amount.toStringAsFixed(0)}',
+                        CurrencyFormatter.format(amount),
                         style: AppTheme.bodyMedium.copyWith(
                             color: color, fontWeight: FontWeight.bold),
                       ),
@@ -854,7 +851,7 @@ class _ExpensesList extends StatelessWidget {
                   ],
                 ),
               ),
-              Text('₦${e.amount.toStringAsFixed(0)}',
+              Text(CurrencyFormatter.format(e.amount),
                   style: AppTheme.bodyLarge.copyWith(
                       color: AppTheme.errorColor, fontWeight: FontWeight.bold)),
             ],
@@ -915,14 +912,14 @@ class _SalesList extends StatelessWidget {
                   children: [
                     Text(s.saleType, style: AppTheme.bodyLarge),
                     Text(
-                        '${s.quantity} ${s.unit} • ₦${s.pricePerUnit}/unit • ${DateFormatter.formatShort(s.date)}',
+                        '${s.quantity} ${s.unit} • ${CurrencyFormatter.format(s.pricePerUnit)}/unit • ${DateFormatter.formatShort(s.date)}',
                         style: AppTheme.bodySmall),
                     if (s.buyerName != null)
                       Text('Buyer: ${s.buyerName}', style: AppTheme.bodySmall),
                   ],
                 ),
               ),
-              Text('₦${s.totalAmount.toStringAsFixed(0)}',
+              Text(CurrencyFormatter.format(s.totalAmount),
                   style: AppTheme.bodyLarge.copyWith(
                       color: AppTheme.successColor,
                       fontWeight: FontWeight.bold)),

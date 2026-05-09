@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../utils/currency_formatter.dart';
 
 class ToolsScreen extends StatelessWidget {
   const ToolsScreen({super.key});
@@ -131,9 +132,9 @@ class ToolsScreen extends StatelessWidget {
         final dailyCost = dailyFeedKg * costPerKg;
         final monthlyCost = dailyCost * 30;
         return _CalcResult(
-          mainValue: '₦${dailyCost.toStringAsFixed(0)}',
+          mainValue: CurrencyFormatter.format(dailyCost),
           mainLabel: 'Daily Feed Cost',
-          note: 'Monthly estimate: ₦${monthlyCost.toStringAsFixed(0)}',
+          note: 'Monthly estimate: ${CurrencyFormatter.format(monthlyCost)}',
           noteColor: AppTheme.secondaryColor,
           explanation:
               '${dailyFeedKg.toStringAsFixed(1)}kg of feed needed daily for ${birds.toInt()} birds.',
@@ -214,8 +215,7 @@ class ToolsScreen extends StatelessWidget {
         final days = double.tryParse(daysController.text);
         if (deaths == null || starting == null || starting == 0) return null;
         final totalRate = (deaths / starting) * 100;
-        final dailyRate =
-            days != null && days > 0 ? totalRate / days : null;
+        final dailyRate = days != null && days > 0 ? totalRate / days : null;
         String rating;
         Color ratingColor;
         if (totalRate <= 2) {
@@ -263,21 +263,20 @@ class ToolsScreen extends StatelessWidget {
       calculate: () {
         final cost = double.tryParse(totalCostController.text);
         final units = double.tryParse(unitsController.text);
-        final unitType = unitTypeController.text.isEmpty
-            ? 'unit'
-            : unitTypeController.text;
+        final unitType =
+            unitTypeController.text.isEmpty ? 'unit' : unitTypeController.text;
         if (cost == null || units == null || units == 0) return null;
         final breakEven = cost / units;
         final withProfit10 = breakEven * 1.10;
         final withProfit20 = breakEven * 1.20;
         return _CalcResult(
-          mainValue: '₦${breakEven.toStringAsFixed(0)}',
+          mainValue: CurrencyFormatter.format(breakEven),
           mainLabel: 'Break-even per $unitType',
           note:
-              '10% profit: ₦${withProfit10.toStringAsFixed(0)} | 20% profit: ₦${withProfit20.toStringAsFixed(0)}',
+              '10% profit: ${CurrencyFormatter.format(withProfit10)} | 20% profit: ${CurrencyFormatter.format(withProfit20)}',
           noteColor: AppTheme.infoColor,
           explanation:
-              'Sell at ₦${breakEven.toStringAsFixed(0)} per $unitType to recover ₦${cost.toStringAsFixed(0)} across ${units.toInt()} ${unitType}s.',
+              'Sell at ${CurrencyFormatter.format(breakEven)} per $unitType to recover ${CurrencyFormatter.format(cost)} across ${units.toInt()} ${unitType}s.',
         );
       },
     );
@@ -401,8 +400,7 @@ class _CalculatorSheetState extends State<_CalculatorSheet> {
         left: AppTheme.spacingMD,
         right: AppTheme.spacingMD,
         top: AppTheme.spacingMD,
-        bottom:
-            MediaQuery.of(context).viewInsets.bottom + AppTheme.spacingMD,
+        bottom: MediaQuery.of(context).viewInsets.bottom + AppTheme.spacingMD,
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -447,14 +445,12 @@ class _CalculatorSheetState extends State<_CalculatorSheet> {
             const SizedBox(height: AppTheme.spacingLG),
             // Input fields
             ...widget.fields.map((field) => Padding(
-                  padding:
-                      const EdgeInsets.only(bottom: AppTheme.spacingMD),
+                  padding: const EdgeInsets.only(bottom: AppTheme.spacingMD),
                   child: TextField(
                     controller: field.controller,
                     decoration: AppTheme.inputDecoration(field.label),
                     keyboardType: field.isNumber
-                        ? const TextInputType.numberWithOptions(
-                            decimal: true)
+                        ? const TextInputType.numberWithOptions(decimal: true)
                         : TextInputType.text,
                     onChanged: (_) => setState(() => _result = null),
                   ),
@@ -479,8 +475,7 @@ class _CalculatorSheetState extends State<_CalculatorSheet> {
                 decoration: BoxDecoration(
                   color: widget.color.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(AppTheme.radiusMD),
-                  border: Border.all(
-                      color: widget.color.withOpacity(0.3)),
+                  border: Border.all(color: widget.color.withOpacity(0.3)),
                 ),
                 child: Column(
                   children: [
@@ -492,8 +487,7 @@ class _CalculatorSheetState extends State<_CalculatorSheet> {
                         color: widget.color,
                       ),
                     ),
-                    Text(_result!.mainLabel,
-                        style: AppTheme.bodySmall),
+                    Text(_result!.mainLabel, style: AppTheme.bodySmall),
                     const SizedBox(height: AppTheme.spacingSM),
                     Text(
                       _result!.note,

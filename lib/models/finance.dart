@@ -1,13 +1,28 @@
+import '../utils/currency_formatter.dart';
+
 enum TransactionType { income, expense }
-enum TransactionCategory { 
-  feed, chicks, vaccine, medication, eggs, meat, birds, equipment, labor, utilities, sales, other 
+
+enum TransactionCategory {
+  feed,
+  chicks,
+  vaccine,
+  medication,
+  eggs,
+  meat,
+  birds,
+  equipment,
+  labor,
+  utilities,
+  sales,
+  other
 }
 
 class Transaction {
-  final String? id;           // nullable as per your original
-  final String? flockId;      // nullable (e.g. general farm expense not tied to one flock)
-  final String type;          // 'income' or 'expense'
-  final String category;      // from TransactionCategory enum
+  final String? id; // nullable as per your original
+  final String?
+      flockId; // nullable (e.g. general farm expense not tied to one flock)
+  final String type; // 'income' or 'expense'
+  final String category; // from TransactionCategory enum
   final String description;
   final double amount;
   final double? quantity;
@@ -15,10 +30,10 @@ class Transaction {
   final DateTime date;
 
   // ─── Sync metadata (added for cloud/offline sync) ────────────────────────
-  final String? lastModified;   // ISO 8601 string (UTC)
-  final String syncStatus;      // 'local', 'pending', 'synced', 'conflict'
-  final String? serverId;       // Firestore/Supabase document ID
-  final bool deleted;           // soft delete flag
+  final String? lastModified; // ISO 8601 string (UTC)
+  final String syncStatus; // 'local', 'pending', 'synced', 'conflict'
+  final String? serverId; // Firestore/Supabase document ID
+  final bool deleted; // soft delete flag
 
   Transaction({
     this.id,
@@ -63,8 +78,11 @@ class Transaction {
       category: map['category'] as String,
       description: map['description'] as String,
       amount: (map['amount'] as num).toDouble(),
-      quantity: map['quantity'] != null ? (map['quantity'] as num).toDouble() : null,
-      unitPrice: map['unitPrice'] != null ? (map['unitPrice'] as num).toDouble() : null,
+      quantity:
+          map['quantity'] != null ? (map['quantity'] as num).toDouble() : null,
+      unitPrice: map['unitPrice'] != null
+          ? (map['unitPrice'] as num).toDouble()
+          : null,
       date: DateTime.parse(map['date'] as String),
       // Sync metadata
       lastModified: map['lastModified'] as String?,
@@ -107,7 +125,7 @@ class Transaction {
   }
 
   // Optional helper: formatted amount with ₦ symbol (Nigeria-specific)
-  String get formattedAmount => '₦${amount.toStringAsFixed(0)}';
+  String get formattedAmount => CurrencyFormatter.format(amount);
 
   // Quick check if this is income
   bool get isIncome => type == TransactionType.income.name;

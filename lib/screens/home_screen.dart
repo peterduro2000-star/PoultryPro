@@ -8,6 +8,8 @@ import '../providers/finance_provider.dart'; // Added import
 import '../models/flock.dart';
 import '../models/daily_record.dart';
 import '../utils/date_formatter.dart';
+import '../utils/currency_formatter.dart';
+import '../services/subscription_service.dart';
 
 // Top-level helper function (visible everywhere in this file)
 Color _getStageColor(String stage) {
@@ -250,7 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildSummaryCard(
                   Icons.savings,
                   'Total Cost',
-                  '₦${_formatNumber(flockProvider.totalInitialCost)}',
+                  CurrencyFormatter.format(flockProvider.totalInitialCost),
                   AppTheme.primaryColor),
             ],
           ),
@@ -290,13 +292,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 _buildFarmMetricItem(
                   Icons.trending_up,
                   'Total Sales',
-                  '₦${_formatNumber(financeProvider.farmTotalSales)}',
+                  CurrencyFormatter.format(financeProvider.farmTotalSales),
                   AppTheme.successColor,
                 ),
                 _buildFarmMetricItem(
                   Icons.receipt_long,
                   'Total Expenses',
-                  '₦${_formatNumber(financeProvider.farmTotalExpenses)}',
+                  CurrencyFormatter.format(financeProvider.farmTotalExpenses),
                   AppTheme.errorColor,
                 ),
                 _buildFarmMetricItem(
@@ -510,12 +512,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
-  }
-
-  String _formatNumber(double value) {
-    if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(1)}M';
-    if (value >= 1000) return '${(value / 1000).toStringAsFixed(0)}k';
-    return value.toStringAsFixed(0);
   }
 
   Widget _buildAgePreview(DateTime stockDate, int ageAtStocking) {
@@ -933,9 +929,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         }
                       } catch (e) {
                         if (context.mounted) {
+                          final message = e is FlockLimitException
+                              ? e.message
+                              : 'Error creating flock: $e';
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('Error creating flock: $e'),
+                              content: Text(message),
                               backgroundColor: AppTheme.errorColor,
                             ),
                           );

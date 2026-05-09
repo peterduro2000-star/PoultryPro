@@ -8,6 +8,7 @@ import '../models/stock.dart';
 import '../widgets/flock_header.dart';
 import 'tools_screen.dart';
 import '../utils/date_formatter.dart';
+import '../utils/currency_formatter.dart';
 
 class StockScreen extends StatefulWidget {
   const StockScreen({super.key});
@@ -285,7 +286,7 @@ class _SummaryBar extends StatelessWidget {
           _SummaryChip(
             icon: Icons.attach_money,
             label: 'Total Value',
-            value: '₦${provider.totalStockValue.toStringAsFixed(0)}',
+            value: CurrencyFormatter.format(provider.totalStockValue),
             color: AppTheme.secondaryColor,
           ),
         ],
@@ -540,7 +541,7 @@ class _StockCard extends StatelessWidget {
               ),
               _StockMetric(
                 label: 'Value',
-                value: '₦${stock.totalValue.toStringAsFixed(0)}',
+                value: CurrencyFormatter.format(stock.totalValue),
                 color: AppTheme.secondaryColor,
               ),
             ],

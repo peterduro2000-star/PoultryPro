@@ -5,6 +5,7 @@ import '../models/expense.dart';
 import '../models/sale.dart';
 import '../services/database_service.dart';
 import '../providers/flock_provider.dart';
+import '../utils/currency_formatter.dart';
 
 class FinanceProvider extends ChangeNotifier {
   final DatabaseService _db = DatabaseService();
@@ -37,9 +38,7 @@ class FinanceProvider extends ChangeNotifier {
 
   String get profitDisplay {
     final p = profit;
-    if (p > 0) return '+₦${p.toStringAsFixed(0)}';
-    if (p < 0) return '-₦${(-p).toStringAsFixed(0)}';
-    return '₦0';
+    return CurrencyFormatter.formatSigned(p);
   }
 
   double get profitMargin => totalSales > 0 ? (profit / totalSales * 100) : 0.0;
@@ -51,9 +50,7 @@ class FinanceProvider extends ChangeNotifier {
 
   String get farmProfitDisplay {
     final p = farmProfit;
-    if (p > 0) return '+₦${p.toStringAsFixed(0)}';
-    if (p < 0) return '-₦${(-p).toStringAsFixed(0)}';
-    return '₦0';
+    return CurrencyFormatter.formatSigned(p);
   }
 
   String get farmProfitMarginDisplay =>
@@ -64,7 +61,7 @@ class FinanceProvider extends ChangeNotifier {
     return value > 0 ? value : 0.0;
   }
 
-  String get remainingCostDisplay => '₦${remainingCost().toStringAsFixed(0)}';
+  String get remainingCostDisplay => CurrencyFormatter.format(remainingCost());
 
   double recoveryPercentage() {
     if (totalExpenses <= 0) return 0.0;
@@ -80,7 +77,7 @@ class FinanceProvider extends ChangeNotifier {
   }
 
   String get farmRemainingCostDisplay =>
-      '₦${farmRemainingCost().toStringAsFixed(0)}';
+      CurrencyFormatter.format(farmRemainingCost());
 
   double farmRecoveryPercentage() {
     if (farmTotalExpenses <= 0) return 0.0;
@@ -113,7 +110,7 @@ class FinanceProvider extends ChangeNotifier {
   }
 
   String remainingCostForFlockDisplay(String flockId) {
-    return '₦${remainingCostForFlock(flockId).toStringAsFixed(0)}';
+    return CurrencyFormatter.format(remainingCostForFlock(flockId));
   }
 
   double breakEvenPerBirdForFlock({
@@ -135,7 +132,7 @@ class FinanceProvider extends ChangeNotifier {
       flockId: flockId,
       currentBirds: currentBirds,
     );
-    return '₦${value.toStringAsFixed(0)}';
+    return CurrencyFormatter.format(value);
   }
 
   double recoveryPercentageForFlock(String flockId) {
@@ -165,7 +162,7 @@ class FinanceProvider extends ChangeNotifier {
       initialBirds: initialBirds,
       currentBirds: currentBirds,
     );
-    return '₦${value.toStringAsFixed(0)}';
+    return CurrencyFormatter.format(value);
   }
 
   double mortalityLossValue({
@@ -183,7 +180,7 @@ class FinanceProvider extends ChangeNotifier {
       mortalityCount: mortalityCount,
       breakEvenPerBird: breakEvenPerBird,
     );
-    return '₦${value.toStringAsFixed(0)}';
+    return CurrencyFormatter.format(value);
   }
 
   Map<String, double> get expensesByCategory {
@@ -397,8 +394,6 @@ class FinanceProvider extends ChangeNotifier {
 
   String profitForFlockDisplay(String flockId) {
     final p = profitForFlock(flockId);
-    if (p > 0) return '+₦${p.toStringAsFixed(0)}';
-    if (p < 0) return '-₦${(-p).toStringAsFixed(0)}';
-    return '₦0';
+    return CurrencyFormatter.formatSigned(p);
   }
 }

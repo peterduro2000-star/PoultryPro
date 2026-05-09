@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/flock.dart';
 import '../services/database_service.dart';
+import '../services/subscription_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FlockProvider extends ChangeNotifier {
+  FlockProvider({SubscriptionService? subscriptionService})
+      : _subscriptionService = subscriptionService ?? SubscriptionService();
+
+  final SubscriptionService _subscriptionService;
   List<Flock> _flocks = [];
   Flock? _selectedFlock;
   bool _isLoading = false;
@@ -56,6 +61,12 @@ class FlockProvider extends ChangeNotifier {
   // ─── Create Flock (Full Object) ────────────────────────────────────────────
   Future<void> createFlock(Flock flock) async {
     try {
+      final canCreate =
+          await _subscriptionService.canCreateFlock(_flocks.length);
+      if (!canCreate) {
+        throw const FlockLimitException(SubscriptionService.upgradeMessage);
+      }
+
       final db = DatabaseService();
       await db.createFlock(flock);
       _flocks.add(flock);
