@@ -10,7 +10,7 @@ import 'providers/finance_provider.dart';
 import 'providers/daily_record_provider.dart';
 import 'providers/stock_provider.dart';
 import 'providers/health_provider.dart';
-import 'screens/main_navigation_screen.dart';
+import 'screens/home_screen.dart';
 import 'services/database_service.dart';
 import 'services/supabase_config.dart';
 
@@ -51,7 +51,7 @@ class PoultryProApp extends StatelessWidget {
           colorScheme: ColorScheme.fromSeed(seedColor: AppTheme.primaryColor),
           textTheme: GoogleFonts.poppinsTextTheme(),
         ),
-        home: const MainNavigationScreen(), // Straight to app, no login
+        home: const HomeScreen(), // Straight to farm dashboard, no login
       ),
     );
   }

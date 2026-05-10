@@ -10,6 +10,9 @@ import '../models/daily_record.dart';
 import '../utils/date_formatter.dart';
 import '../utils/currency_formatter.dart';
 import '../services/subscription_service.dart';
+import 'flocks_screen.dart';
+import 'settings_screen.dart';
+import 'upgrade_screen.dart';
 
 // Top-level helper function (visible everywhere in this file)
 Color _getStageColor(String stage) {
@@ -33,12 +36,6 @@ Color _getStageColor(String stage) {
   }
 }
 
-String _formatCompactCurrency(double value) {
-  if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(1)}M';
-  if (value >= 1000) return '${(value / 1000).toStringAsFixed(0)}k';
-  return value.toStringAsFixed(0);
-}
-
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -48,6 +45,16 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _initialLoadComplete = false;
+
+  TextStyle get _dashboardSectionTitleStyle {
+    return Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ) ??
+        const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+        );
+  }
 
   @override
   void initState() {
@@ -117,11 +124,6 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           }
 
-          // Empty state: no flocks yet
-          if (flockProvider.flocks.isEmpty) {
-            return _buildEmptyState(context);
-          }
-
           // Main content with refresh
           return RefreshIndicator(
             onRefresh: () async {
@@ -141,54 +143,33 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Consumer<DailyRecordProvider>(
               builder: (context, recordProvider, _) {
                 return ListView(
-                  padding: const EdgeInsets.all(AppTheme.spacingMD),
+                  padding: EdgeInsets.fromLTRB(
+                    AppTheme.spacingMD,
+                    AppTheme.spacingMD,
+                    AppTheme.spacingMD,
+                    MediaQuery.paddingOf(context).bottom +
+                        56 +
+                        AppTheme.spacingLG +
+                        AppTheme.spacingMD,
+                  ),
                   children: [
-                    // Selected flock banner
-                    if (flockProvider.selectedFlock != null)
-                      _SelectedFlockBanner(flock: flockProvider.selectedFlock!),
-                    if (flockProvider.selectedFlock != null)
-                      const SizedBox(height: AppTheme.spacingMD),
-
-                    // ── NEW: Vaccination Reminders Banner ─────────────────────────────
-                    if (flockProvider.selectedFlock != null &&
-                        flockProvider.selectedFlock!.nextVaccination != null)
-                      _VaccinationBanner(flock: flockProvider.selectedFlock!),
-
                     // Farm-wide business performance
                     Consumer<FinanceProvider>(
                       builder: (context, financeProvider, _) =>
-                          _buildFarmPerformanceCard(financeProvider),
-                    ),
-                    const SizedBox(height: AppTheme.spacingLG),
-
-                    // Dashboard summary
-                    _buildDashboardSummary(flockProvider),
-                    const SizedBox(height: AppTheme.spacingLG),
-
-                    // Flocks header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Your Flocks', style: AppTheme.headingSmall),
-                        Text('Tap to select',
-                            style: AppTheme.bodySmall
-                                .copyWith(color: AppTheme.textSecondary)),
-                      ],
-                    ),
-                    const SizedBox(height: AppTheme.spacingMD),
-
-                    // Flock grid
-                    Consumer<FinanceProvider>(
-                      builder: (context, financeProvider, _) => _buildFlockGrid(
+                          _buildFarmPerformanceCard(
                         flockProvider,
-                        recordProvider.latestRecords,
                         financeProvider,
                       ),
                     ),
                     const SizedBox(height: AppTheme.spacingLG),
 
-                    // Today's Summary
+                    _buildFarmAlertsCard(flockProvider),
+                    const SizedBox(height: AppTheme.spacingLG),
+
                     _buildTodaySummary(recordProvider),
+                    const SizedBox(height: AppTheme.spacingLG),
+
+                    _buildNavigationCards(flockProvider),
                   ],
                 );
               },
@@ -196,72 +177,13 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'home_fab',
-        backgroundColor: AppTheme.primaryColor,
-        foregroundColor: Colors.white,
-        onPressed: () => _showCreateFlockDialog(context),
-        child: const Icon(Icons.add),
-      ),
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.pets,
-              size: 80, color: AppTheme.primaryColor.withOpacity(0.3)),
-          const SizedBox(height: AppTheme.spacingMD),
-          Text('No Flocks Yet', style: AppTheme.headingMedium),
-          const SizedBox(height: AppTheme.spacingSM),
-          Text('Create your first flock to get started',
-              style: AppTheme.bodyMedium),
-          const SizedBox(height: AppTheme.spacingLG),
-          ElevatedButton.icon(
-            onPressed: () => _showCreateFlockDialog(context),
-            icon: const Icon(Icons.add),
-            label: const Text('Create Flock'),
-            style: AppTheme.primaryButtonStyle,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDashboardSummary(FlockProvider flockProvider) {
-    return Container(
-      decoration: AppTheme.cardDecoration,
-      padding: const EdgeInsets.all(AppTheme.spacingMD),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Overview', style: AppTheme.headingSmall),
-          const SizedBox(height: AppTheme.spacingMD),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildSummaryCard(
-                  Icons.groups,
-                  'Active Flocks',
-                  flockProvider.activeFlockCount.toString(),
-                  AppTheme.primaryColor),
-              _buildSummaryCard(Icons.egg_alt, 'Total Birds',
-                  flockProvider.totalBirds.toString(), AppTheme.secondaryColor),
-              _buildSummaryCard(
-                  Icons.savings,
-                  'Total Cost',
-                  CurrencyFormatter.format(flockProvider.totalInitialCost),
-                  AppTheme.primaryColor),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFarmPerformanceCard(FinanceProvider financeProvider) {
+  Widget _buildFarmPerformanceCard(
+    FlockProvider flockProvider,
+    FinanceProvider financeProvider,
+  ) {
     final hasData = financeProvider.farmExpenses.isNotEmpty ||
         financeProvider.farmSales.isNotEmpty;
 
@@ -271,11 +193,18 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Farm Performance', style: AppTheme.headingSmall),
+          Text('Farm Performance', style: _dashboardSectionTitleStyle),
+          const SizedBox(height: 2),
+          Text(
+            'All flocks combined',
+            style: AppTheme.bodySmall.copyWith(
+              color: AppTheme.textSecondary,
+            ),
+          ),
           const SizedBox(height: AppTheme.spacingMD),
           if (financeProvider.isFarmFinanceLoading)
             const Center(child: CircularProgressIndicator())
-          else if (!hasData)
+          else if (!hasData && flockProvider.flocks.isEmpty)
             Center(
               child: Text(
                 'No financial data yet',
@@ -290,15 +219,29 @@ class _HomeScreenState extends State<HomeScreen> {
               alignment: WrapAlignment.spaceBetween,
               children: [
                 _buildFarmMetricItem(
+                  Icons.home_work_outlined,
+                  'Active Flocks',
+                  flockProvider.activeFlockCount.toString(),
+                  AppTheme.primaryColor,
+                ),
+                _buildFarmMetricItem(
+                  Icons.groups,
+                  'Total Birds',
+                  flockProvider.totalBirds.toString(),
+                  AppTheme.secondaryColor,
+                ),
+                _buildFarmMetricItem(
                   Icons.trending_up,
                   'Total Sales',
-                  CurrencyFormatter.format(financeProvider.farmTotalSales),
+                  CurrencyFormatter.formatCompact(
+                      financeProvider.farmTotalSales),
                   AppTheme.successColor,
                 ),
                 _buildFarmMetricItem(
                   Icons.receipt_long,
                   'Total Expenses',
-                  CurrencyFormatter.format(financeProvider.farmTotalExpenses),
+                  CurrencyFormatter.formatCompact(
+                      financeProvider.farmTotalExpenses),
                   AppTheme.errorColor,
                 ),
                 _buildFarmMetricItem(
@@ -306,16 +249,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? Icons.account_balance_wallet
                       : Icons.warning_amber,
                   'Profit',
-                  financeProvider.farmProfitDisplay,
+                  CurrencyFormatter.formatCompact(financeProvider.farmProfit),
                   financeProvider.farmProfit >= 0
                       ? AppTheme.successColor
                       : AppTheme.errorColor,
-                ),
-                _buildFarmMetricItem(
-                  Icons.percent,
-                  'Profit Margin',
-                  financeProvider.farmProfitMarginDisplay,
-                  AppTheme.primaryColor,
                 ),
                 _buildFarmMetricItem(
                   Icons.paid,
@@ -330,23 +267,59 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSummaryCard(
-      IconData icon, String label, String value, Color color) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(AppTheme.spacingSM),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(AppTheme.radiusSM),
+  Widget _buildFarmAlertsCard(FlockProvider flockProvider) {
+    final upcoming = flockProvider.flocks
+        .where((flock) => flock.nextVaccination != null)
+        .toList()
+      ..sort((a, b) => a.nextVaccination!
+          .daysUntil(a.currentAgeDays)
+          .compareTo(b.nextVaccination!.daysUntil(b.currentAgeDays)));
+
+    final alertText = upcoming.isEmpty
+        ? 'No farm-wide vaccination reminders right now'
+        : _farmVaccinationAlertText(upcoming.first);
+
+    return Container(
+      decoration: AppTheme.cardDecoration,
+      padding: const EdgeInsets.all(AppTheme.spacingMD),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(AppTheme.spacingSM),
+            decoration: BoxDecoration(
+              color: AppTheme.successColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(AppTheme.radiusSM),
+            ),
+            child: Icon(Icons.notifications_active_outlined,
+                color: AppTheme.successColor),
           ),
-          child: Icon(icon, color: color, size: 24),
-        ),
-        const SizedBox(height: AppTheme.spacingSM),
-        Text(value, style: AppTheme.headingSmall.copyWith(color: color)),
-        Text(label, style: AppTheme.bodySmall),
-      ],
+          const SizedBox(width: AppTheme.spacingSM),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Farm Alerts', style: _dashboardSectionTitleStyle),
+                const SizedBox(height: 2),
+                Text(
+                  alertText,
+                  style: AppTheme.bodySmall
+                      .copyWith(color: AppTheme.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  String _farmVaccinationAlertText(Flock flock) {
+    final next = flock.nextVaccination!;
+    final daysLeft = next.daysUntil(flock.currentAgeDays);
+    if (daysLeft <= 0) {
+      return '${flock.name}: ${next.name} is overdue';
+    }
+    return '${flock.name}: ${next.name} due in $daysLeft day${daysLeft == 1 ? '' : 's'}';
   }
 
   Widget _buildFarmMetricItem(
@@ -364,12 +337,17 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Icon(icon, color: color, size: 22),
           ),
           const SizedBox(height: AppTheme.spacingSM),
-          Text(
-            value,
-            style: AppTheme.bodyLarge
-                .copyWith(color: color, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value,
+                style: AppTheme.bodyLarge
+                    .copyWith(color: color, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+            ),
           ),
           Text(
             label,
@@ -381,58 +359,119 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildFlockGrid(
-    FlockProvider flockProvider,
-    Map<String, DailyRecord?> latestRecords,
-    FinanceProvider financeProvider,
-  ) {
-    final flocks = flockProvider.flocks;
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 0.68,
-      ),
-      itemCount: flocks.length,
-      itemBuilder: (context, index) {
-        final flock = flocks[index];
-        final latest = latestRecords[flock.id];
-        final isSelected = flockProvider.selectedFlock?.id == flock.id;
-        final breakEvenPerBird = financeProvider.breakEvenPerBirdForFlock(
-          flockId: flock.id,
-          currentBirds: flock.birdCount,
-        );
-        final recoveryPercentage =
-            financeProvider.recoveryPercentageForFlock(flock.id);
-        return _FlockGridCard(
-          flock: flock,
-          latestRecord: latest,
-          isSelected: isSelected,
-          mortalityTotal:
-              context.read<DailyRecordProvider>().mortalityTotalFor(flock.id),
-          breakEvenPerBird: breakEvenPerBird,
-          breakEvenDisplay: financeProvider.breakEvenPerBirdForFlockDisplay(
-            flockId: flock.id,
-            currentBirds: flock.birdCount,
-          ),
-          recoveryPercentage: recoveryPercentage,
+  Widget _buildNavigationCards(FlockProvider flockProvider) {
+    return Column(
+      children: [
+        _buildFlocksNavigationCard(flockProvider),
+        const SizedBox(height: AppTheme.spacingMD),
+        _buildNavigationCard(
+          icon: Icons.analytics_outlined,
+          title: 'Reports / Analytics',
+          subtitle: 'Advanced farm reports coming soon',
+          meta: 'Soon',
           onTap: () {
-            context.read<FlockProvider>().selectFlock(flock);
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('${flock.name} selected'),
-                duration: const Duration(seconds: 1),
-                backgroundColor: AppTheme.primaryColor,
-              ),
+              const SnackBar(content: Text('Reports coming soon')),
             );
           },
-          onEdit: () => _showEditFlockDialog(context, flock),
-          onDelete: () => _confirmDelete(context, flock),
+        ),
+        const SizedBox(height: AppTheme.spacingMD),
+        _buildNavigationCard(
+          icon: Icons.settings_outlined,
+          title: 'Settings',
+          subtitle: 'Manage app preferences and backup',
+          meta: '',
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFlocksNavigationCard(FlockProvider flockProvider) {
+    final flockCount = flockProvider.flocks.length;
+
+    return _buildNavigationCard(
+      icon: Icons.groups,
+      title: 'My Flocks',
+      subtitle: 'View and manage all flock batches',
+      meta: '$flockCount ${flockCount == 1 ? 'flock' : 'flocks'}',
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => FlocksScreen(
+              onCreateFlock: _showCreateFlockDialog,
+              onEditFlock: _showEditFlockDialog,
+              onDeleteFlock: _confirmDelete,
+            ),
+          ),
         );
       },
+    );
+  }
+
+  Widget _buildNavigationCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String meta,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+      elevation: 2,
+      shadowColor: Colors.black.withOpacity(0.12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(AppTheme.spacingMD),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(AppTheme.spacingSM),
+                decoration: BoxDecoration(
+                  color: AppTheme.secondaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusSM),
+                ),
+                child: Icon(icon, color: AppTheme.secondaryColor),
+              ),
+              const SizedBox(width: AppTheme.spacingSM),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: _dashboardSectionTitleStyle),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: AppTheme.bodySmall
+                          .copyWith(color: AppTheme.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              if (meta.isNotEmpty) ...[
+                Text(
+                  meta,
+                  style: AppTheme.bodyLarge.copyWith(
+                    color: AppTheme.secondaryColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: AppTheme.spacingSM),
+              ],
+              Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -460,7 +499,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("Today's Summary", style: AppTheme.headingSmall),
+              Text("Today's Summary", style: _dashboardSectionTitleStyle),
               Text(
                 hasData ? 'All flocks' : 'No records yet',
                 style:
@@ -539,6 +578,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showCreateFlockDialog(BuildContext context) {
+    final parentContext = context;
     final nameController = TextEditingController();
     final birdCountController = TextEditingController();
     final costPerBirdController = TextEditingController();
@@ -929,12 +969,74 @@ class _HomeScreenState extends State<HomeScreen> {
                         }
                       } catch (e) {
                         if (context.mounted) {
-                          final message = e is FlockLimitException
-                              ? e.message
-                              : 'Error creating flock: $e';
+                          if (e is FlockLimitException) {
+                            await showDialog<void>(
+                              context: context,
+                              builder: (dialogContext) => AlertDialog(
+                                title: Row(
+                                  children: [
+                                    Icon(Icons.workspace_premium,
+                                        color: AppTheme.accentColor),
+                                    const SizedBox(width: AppTheme.spacingSM),
+                                    const Expanded(
+                                      child: Text('Free Plan Limit Reached'),
+                                    ),
+                                  ],
+                                ),
+                                content: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                        'The Free plan supports 1 flock.'),
+                                    const SizedBox(height: AppTheme.spacingMD),
+                                    Text('Upgrade to Pro to unlock:',
+                                        style: AppTheme.bodyMedium.copyWith(
+                                            fontWeight: FontWeight.w600)),
+                                    const SizedBox(height: AppTheme.spacingSM),
+                                    const Text(
+                                      '• Unlimited flocks\n'
+                                      '• Advanced reports\n'
+                                      '• Smart business insights\n'
+                                      '• Reminders',
+                                    ),
+                                  ],
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(dialogContext),
+                                    child: const Text('Maybe Later'),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.primaryColor,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    onPressed: () {
+                                      Navigator.pop(dialogContext);
+                                      Navigator.pop(context);
+                                      if (parentContext.mounted) {
+                                        Navigator.push(
+                                          parentContext,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const UpgradeScreen(),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    child: const Text('Upgrade'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            return;
+                          }
+
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text(message),
+                              content: Text('Error creating flock: $e'),
                               backgroundColor: AppTheme.errorColor,
                             ),
                           );
@@ -1312,256 +1414,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ─── Flock Grid Card ─────────────────────────────────────────────────────────
-
-class _FlockGridCard extends StatelessWidget {
-  final Flock flock;
-  final DailyRecord? latestRecord;
-  final bool isSelected;
-  final int mortalityTotal;
-  final double breakEvenPerBird;
-  final String breakEvenDisplay;
-  final double recoveryPercentage;
-  final VoidCallback onTap;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-
-  const _FlockGridCard({
-    required this.flock,
-    required this.latestRecord,
-    required this.isSelected,
-    required this.mortalityTotal,
-    required this.breakEvenPerBird,
-    required this.breakEvenDisplay,
-    required this.recoveryPercentage,
-    required this.onTap,
-    required this.onEdit,
-    required this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final nextVax = flock.nextVaccination;
-    final daysToNext =
-        nextVax != null ? nextVax.daysUntil(flock.currentAgeDays) : null;
-    final costRecovered = breakEvenPerBird == 0 && recoveryPercentage >= 100;
-    final mortalityBase = flock.birdCount + mortalityTotal;
-    final mortalityPercentage =
-        mortalityBase > 0 ? mortalityTotal / mortalityBase * 100 : 0.0;
-    final mortalityLoss = mortalityTotal * breakEvenPerBird;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(AppTheme.radiusMD),
-          border: isSelected
-              ? Border.all(color: AppTheme.primaryColor, width: 2)
-              : null,
-          boxShadow: [isSelected ? AppTheme.shadowLG : AppTheme.shadowMD],
-        ),
-        padding: const EdgeInsets.all(AppTheme.spacingMD),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    flock.name,
-                    style: AppTheme.bodyLarge
-                        .copyWith(fontWeight: FontWeight.w700),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: flock.status == 'active'
-                        ? AppTheme.successColor
-                        : AppTheme.warningColor,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    flock.status.toUpperCase(),
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 2),
-            Text('${flock.birdCount} ${flock.type}', style: AppTheme.bodySmall),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(Icons.calendar_today,
-                    size: 14, color: AppTheme.primaryColor),
-                const SizedBox(width: 4),
-                Text(flock.ageDisplay,
-                    style: AppTheme.bodySmall
-                        .copyWith(color: AppTheme.primaryColor)),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: _getStageColor(flock.productionStage).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                flock.productionStage,
-                style: AppTheme.bodySmall.copyWith(
-                  color: _getStageColor(flock.productionStage),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 10,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (daysToNext != null) ...[
-              const SizedBox(height: 6),
-              Flexible(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: daysToNext <= 3
-                        ? AppTheme.errorColor.withOpacity(0.15)
-                        : AppTheme.warningColor.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    'Next vax: ${nextVax!.name} (${daysToNext} day${daysToNext == 1 ? '' : 's'})',
-                    style: AppTheme.bodySmall.copyWith(
-                      color: daysToNext <= 3
-                          ? AppTheme.errorColor
-                          : AppTheme.warningColor,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-              ),
-            ],
-            const Divider(height: AppTheme.spacingLG),
-            if (latestRecord != null) ...[
-              _StatRow(
-                icon: Icons.egg,
-                label: 'Eggs today',
-                value: '${latestRecord!.eggsCollected ?? 0}',
-                color: AppTheme.primaryColor,
-              ),
-              const SizedBox(height: 4),
-              _StatRow(
-                icon: Icons.warning,
-                label: 'Mortality',
-                value: mortalityTotal > 0
-                    ? '${mortalityPercentage.toStringAsFixed(1)}%'
-                    : '0%',
-                color: mortalityTotal > 0
-                    ? AppTheme.errorColor
-                    : AppTheme.successColor,
-              ),
-            ] else ...[
-              Text('No records yet',
-                  style: AppTheme.bodySmall
-                      .copyWith(color: AppTheme.textSecondary)),
-            ],
-            const SizedBox(height: 4),
-            _StatRow(
-              icon: costRecovered ? Icons.check_circle : Icons.price_check,
-              label: costRecovered ? 'Cost recovered' : 'Break-even',
-              value: costRecovered
-                  ? '${recoveryPercentage.toStringAsFixed(0)}%'
-                  : breakEvenDisplay,
-              color:
-                  costRecovered ? AppTheme.successColor : AppTheme.accentColor,
-            ),
-            if (!costRecovered)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  'Recovered ${recoveryPercentage.toStringAsFixed(0)}%',
-                  style: AppTheme.bodySmall.copyWith(fontSize: 10),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            if (mortalityTotal > 0 && breakEvenPerBird > 0) ...[
-              const SizedBox(height: 4),
-              _StatRow(
-                icon: Icons.money_off,
-                label: 'Mortality loss',
-                value: '₦${_formatCompactCurrency(mortalityLoss)}',
-                color: AppTheme.errorColor,
-              ),
-            ],
-            const Spacer(),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                GestureDetector(
-                  onTap: onEdit,
-                  child: Icon(Icons.edit_outlined,
-                      size: 16, color: AppTheme.textSecondary),
-                ),
-                const SizedBox(width: AppTheme.spacingSM),
-                GestureDetector(
-                  onTap: onDelete,
-                  child: Icon(Icons.delete_outline,
-                      size: 16, color: AppTheme.errorColor),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Stat Row ─────────────────────────────────────────────────────────────────
-
-class _StatRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _StatRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 13, color: color),
-        const SizedBox(width: 4),
-        Expanded(
-            child: Text(label,
-                style: AppTheme.bodySmall, overflow: TextOverflow.ellipsis)),
-        Text(value,
-            style: AppTheme.bodySmall
-                .copyWith(color: color, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-}
-
 // ─── Today Stat Item ──────────────────────────────────────────────────────────
 
 class _TodayStatItem extends StatelessWidget {
@@ -1596,52 +1448,6 @@ class _TodayStatItem extends StatelessWidget {
                   .copyWith(color: color, fontWeight: FontWeight.bold),
               overflow: TextOverflow.ellipsis),
           Text(label, style: AppTheme.bodySmall, textAlign: TextAlign.center),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Selected Flock Banner ────────────────────────────────────────────────────
-
-class _SelectedFlockBanner extends StatelessWidget {
-  final Flock flock;
-
-  const _SelectedFlockBanner({required this.flock});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppTheme.spacingMD),
-      decoration: BoxDecoration(
-        color: AppTheme.primaryColor,
-        borderRadius: BorderRadius.circular(AppTheme.radiusMD),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.check_circle, color: Colors.white, size: 20),
-          const SizedBox(width: AppTheme.spacingSM),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Currently Viewing',
-                    style: AppTheme.bodySmall.copyWith(color: Colors.white70)),
-                Text(flock.name,
-                    style: AppTheme.bodyLarge.copyWith(
-                        color: Colors.white, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text('${flock.birdCount} birds',
-                  style: AppTheme.bodySmall.copyWith(color: Colors.white70)),
-              Text(flock.ageDisplay,
-                  style: AppTheme.bodySmall.copyWith(color: Colors.white70)),
-            ],
-          ),
         ],
       ),
     );
