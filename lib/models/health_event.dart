@@ -2,7 +2,8 @@ class HealthEvent {
   final String id;
   final String flockId;
   final String date;
-  final String eventType; // 'vaccination', 'treatment', 'disease', 'observation'
+  final String
+      eventType; // 'vaccination', 'treatment', 'disease', 'observation'
   final String description;
   final String? severity; // 'low', 'medium', 'high'
   final int? affectedBirds;

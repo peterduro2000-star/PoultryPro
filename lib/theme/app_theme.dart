@@ -135,25 +135,25 @@ class AppTheme {
 
   // Input Decoration
   static InputDecoration inputDecoration(String label) => InputDecoration(
-    labelText: label,
-    labelStyle: bodyMedium,
-    contentPadding: const EdgeInsets.symmetric(
-      horizontal: spacingMD,
-      vertical: spacingMD,
-    ),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(radiusMD),
-      borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(radiusMD),
-      borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(radiusMD),
-      borderSide: const BorderSide(color: primaryColor, width: 2),
-    ),
-    filled: true,
-    fillColor: const Color(0xFFFAFAFA),
-  );
+        labelText: label,
+        labelStyle: bodyMedium,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: spacingMD,
+          vertical: spacingMD,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radiusMD),
+          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radiusMD),
+          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radiusMD),
+          borderSide: const BorderSide(color: primaryColor, width: 2),
+        ),
+        filled: true,
+        fillColor: const Color(0xFFFAFAFA),
+      );
 }

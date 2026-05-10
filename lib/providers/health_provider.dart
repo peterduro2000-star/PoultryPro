@@ -74,7 +74,9 @@ class HealthProvider extends ChangeNotifier {
 
   List<HealthEvent> get recentEvents => _events.take(10).toList();
 
-  List<HealthEvent> get highSeverityEvents => _events.where((e) => e.severity == 'high').toList();
+  List<HealthEvent> get highSeverityEvents =>
+      _events.where((e) => e.severity == 'high').toList();
 
-  int get totalAffectedBirds => _events.fold(0, (sum, e) => sum + (e.affectedBirds ?? 0));
+  int get totalAffectedBirds =>
+      _events.fold(0, (sum, e) => sum + (e.affectedBirds ?? 0));
 }

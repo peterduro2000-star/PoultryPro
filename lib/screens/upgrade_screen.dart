@@ -13,8 +13,6 @@ class UpgradeScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(AppTheme.spacingMD),
         children: [
-          Text('Upgrade to Poultry Pro', style: AppTheme.headingMedium),
-          const SizedBox(height: AppTheme.spacingSM),
           Text(
             SubscriptionService.upgradeMessage,
             style: AppTheme.bodyMedium.copyWith(color: AppTheme.textSecondary),
@@ -50,17 +48,23 @@ class UpgradeScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Payment coming soon', style: AppTheme.headingSmall),
+                  const Text(
+                    'Payment coming soon',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const SizedBox(height: AppTheme.spacingSM),
                   Text(
-                    'Pro checkout is not enabled yet. Contact/WhatsApp upgrade support will be added before payments go live.',
+                    'Pro upgrades and premium features will be available in a future update.',
                     style: AppTheme.bodyMedium,
                   ),
                   const SizedBox(height: AppTheme.spacingMD),
                   OutlinedButton.icon(
                     onPressed: null,
-                    icon: const Icon(Icons.chat),
-                    label: const Text('WhatsApp/contact coming soon'),
+                    icon: const Icon(Icons.workspace_premium),
+                    label: const Text('Pro upgrades coming soon'),
                   ),
                 ],
               ),
@@ -101,7 +105,13 @@ class _PlanCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title, style: AppTheme.headingSmall),
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                       Text(subtitle, style: AppTheme.bodySmall),
                     ],
                   ),

@@ -1,7 +1,8 @@
 class Expense {
   final String id;
   final String flockId;
-  final String category; // 'feed', 'medicine', 'labor', 'utilities', 'equipment', 'other'
+  final String
+      category; // 'feed', 'medicine', 'labor', 'utilities', 'equipment', 'other'
   final String description;
   final double amount;
   final String date;

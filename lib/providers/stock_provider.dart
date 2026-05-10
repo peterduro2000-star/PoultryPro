@@ -67,11 +67,11 @@ class StockProvider extends ChangeNotifier {
 
       await _db.createStock(stock);
       _stocks.add(stock);
-      
+
       if (stock.isLowStock) {
         _lowStockAlerts.add(stock);
       }
-      
+
       _error = null;
     } catch (e) {
       _error = 'Failed to add stock: $e';
@@ -87,20 +87,21 @@ class StockProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final updated = stock.copyWith(updatedAt: DateTime.now().toIso8601String());
+      final updated =
+          stock.copyWith(updatedAt: DateTime.now().toIso8601String());
       await _db.updateStock(updated);
-      
+
       final index = _stocks.indexWhere((s) => s.id == stock.id);
       if (index != -1) {
         _stocks[index] = updated;
       }
-      
+
       // Update low stock alerts
       _lowStockAlerts.removeWhere((s) => s.id == stock.id);
       if (updated.isLowStock) {
         _lowStockAlerts.add(updated);
       }
-      
+
       _error = null;
     } catch (e) {
       _error = 'Failed to update stock: $e';

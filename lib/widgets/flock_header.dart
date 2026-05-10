@@ -49,8 +49,7 @@ class FlockHeader extends StatelessWidget {
                   color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: const Icon(Icons.egg_alt,
-                    size: 18, color: Colors.white),
+                child: const Icon(Icons.egg_alt, size: 18, color: Colors.white),
               ),
               const SizedBox(width: AppTheme.spacingSM),
               // Flock name + details

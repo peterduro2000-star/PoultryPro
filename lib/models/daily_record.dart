@@ -61,11 +61,17 @@ class DailyRecord {
         id: map['id'] as String,
         flockId: map['flockId'] as String,
         date: map['date'] as String,
-        feedGiven: map['feedGiven'] != null ? (map['feedGiven'] as num).toDouble() : null,
-        waterGiven: map['waterGiven'] != null ? (map['waterGiven'] as num).toDouble() : null,
+        feedGiven: map['feedGiven'] != null
+            ? (map['feedGiven'] as num).toDouble()
+            : null,
+        waterGiven: map['waterGiven'] != null
+            ? (map['waterGiven'] as num).toDouble()
+            : null,
         eggsCollected: map['eggsCollected'] as int?,
         mortalityCount: map['mortalityCount'] as int?,
-        averageWeight: map['averageWeight'] != null ? (map['averageWeight'] as num).toDouble() : null,
+        averageWeight: map['averageWeight'] != null
+            ? (map['averageWeight'] as num).toDouble()
+            : null,
         healthObservations: map['healthObservations'] as String?,
         notes: map['notes'] as String?,
         createdAt: map['createdAt'] as String,
