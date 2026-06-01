@@ -8,6 +8,7 @@ import '../providers/finance_provider.dart'; // Added import
 import '../models/flock.dart';
 import '../models/daily_record.dart';
 import '../utils/date_formatter.dart';
+import '../utils/currency_formatter.dart';
 
 // Top-level helper function (visible everywhere in this file)
 Color _getStageColor(String stage) {
@@ -31,11 +32,7 @@ Color _getStageColor(String stage) {
   }
 }
 
-String _formatCompactCurrency(double value) {
-  if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(1)}M';
-  if (value >= 1000) return '${(value / 1000).toStringAsFixed(0)}k';
-  return value.toStringAsFixed(0);
-}
+
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -250,10 +247,11 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildSummaryCard(
                   Icons.savings,
                   'Total Cost',
-                  '₦${_formatNumber(flockProvider.totalInitialCost)}',
+                  CurrencyFormatter.formatCompact(flockProvider.totalInitialCost),
                   AppTheme.primaryColor),
             ],
           ),
+          // batch comparison button removed
         ],
       ),
     );
@@ -290,13 +288,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 _buildFarmMetricItem(
                   Icons.trending_up,
                   'Total Sales',
-                  '₦${_formatNumber(financeProvider.farmTotalSales)}',
+                  CurrencyFormatter.formatCompact(financeProvider.farmTotalSales),
                   AppTheme.successColor,
                 ),
                 _buildFarmMetricItem(
                   Icons.receipt_long,
                   'Total Expenses',
-                  '₦${_formatNumber(financeProvider.farmTotalExpenses)}',
+                  CurrencyFormatter.formatCompact(financeProvider.farmTotalExpenses),
                   AppTheme.errorColor,
                 ),
                 _buildFarmMetricItem(
@@ -318,7 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 _buildFarmMetricItem(
                   Icons.paid,
                   'Cost Recovered',
-                  '${financeProvider.farmRecoveryPercentage().toStringAsFixed(1)}%',
+                  '${financeProvider.farmRecoveryPercentage.toStringAsFixed(1)}%',
                   AppTheme.secondaryColor,
                 ),
               ],
@@ -512,11 +510,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  String _formatNumber(double value) {
-    if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(1)}M';
-    if (value >= 1000) return '${(value / 1000).toStringAsFixed(0)}k';
-    return value.toStringAsFixed(0);
-  }
+
 
   Widget _buildAgePreview(DateTime stockDate, int ageAtStocking) {
     final daysSinceStocking = DateTime.now().difference(stockDate).inDays;
@@ -1503,7 +1497,7 @@ class _FlockGridCard extends StatelessWidget {
               _StatRow(
                 icon: Icons.money_off,
                 label: 'Mortality loss',
-                value: '₦${_formatCompactCurrency(mortalityLoss)}',
+                value: CurrencyFormatter.formatCompact(mortalityLoss),
                 color: AppTheme.errorColor,
               ),
             ],

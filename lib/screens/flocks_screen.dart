@@ -95,12 +95,10 @@ class _FlocksScreenState extends State<FlocksScreen> {
                 final mortalityTotal =
                     recordProvider.mortalityTotalFor(flock.id);
                 final breakEvenPerBird =
-                    financeProvider.breakEvenPerBirdForFlock(
-                  flockId: flock.id,
-                  currentBirds: flock.birdCount,
-                  initialBirds: flock.initialBirdCount,
-                  totalMortality: mortalityTotal,
-                );
+    financeProvider.breakEvenPerBirdForFlock(
+  flockId: flock.id,
+  currentBirds: flock.birdCount,
+);
                 final recoveryPercentage =
                     financeProvider.recoveryPercentageForFlock(flock.id);
 
@@ -111,12 +109,10 @@ class _FlocksScreenState extends State<FlocksScreen> {
                   mortalityTotal: mortalityTotal,
                   breakEvenPerBird: breakEvenPerBird,
                   breakEvenDisplay:
-                      financeProvider.breakEvenPerBirdForFlockDisplay(
-                    flockId: flock.id,
-                    currentBirds: flock.birdCount,
-                    initialBirds: flock.initialBirdCount,
-                    totalMortality: mortalityTotal,
-                  ),
+    financeProvider.breakEvenPerBirdForFlockDisplay(
+  flockId: flock.id,
+  currentBirds: flock.birdCount,
+),
                   recoveryPercentage: recoveryPercentage,
                   onTap: () => _openFlockWorkspace(context, flock),
                   onEdit: () => widget.onEditFlock(context, flock),

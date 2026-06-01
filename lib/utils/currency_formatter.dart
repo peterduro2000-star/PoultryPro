@@ -1,39 +1,62 @@
-import 'package:intl/intl.dart';
-
+/// Single source of truth for all currency and number formatting.
+/// Every screen must use these — never inline toStringAsFixed for money.
 class CurrencyFormatter {
-  static final NumberFormat _naira = NumberFormat.currency(
-    locale: 'en_NG',
-    symbol: '₦',
-    decimalDigits: 2,
-  );
-  static final NumberFormat _compact = NumberFormat('#,##0', 'en_NG');
+  CurrencyFormatter._();
 
-  static String format(num value) => _naira.format(value);
+  static const String _symbol = '\u20a6'; // ₦
 
-  static String formatCompact(num value) {
-    final sign = value < 0 ? '-' : '';
-    final absValue = value.abs();
-
-    if (absValue >= 1000000) {
-      return '$sign₦${_trimCompact(absValue / 1000000)}M';
-    }
-    if (absValue >= 10000) {
-      return '$sign₦${_trimCompact(absValue / 1000)}K';
-    }
-    // Values from ₦1,000-₦9,999 stay fully formatted for readability.
-    return '$sign₦${_compact.format(absValue)}';
+  /// ₦1,234,567 — full format with thousands separator
+  static String format(double value) {
+    if (value < 0) return '-${_symbol}${_formatWithCommas(-value)}';
+    return '$_symbol${_formatWithCommas(value)}';
   }
 
-  static String formatSigned(num value) {
-    if (value > 0) return '+${format(value)}';
-    if (value < 0) return '-${format(value.abs())}';
-    return format(0);
+  /// ₦1,125 — full format with commas, no abbreviation.
+  /// Use for: per-bird prices, individual transactions, suggested prices,
+  /// any figure the farmer will act on directly.
+  static String formatFull(double value) {
+    final isNegative = value < 0;
+    final abs = value.abs();
+    final prefix = isNegative ? '-' : '';
+    return '$prefix$_symbol${_formatWithCommas(abs)}';
   }
 
-  static String _trimCompact(num value) {
-    final formatted = value.toStringAsFixed(1);
-    return formatted.endsWith('.0')
-        ? formatted.substring(0, formatted.length - 2)
-        : formatted;
+  /// ₦1,125 / ₦140k / ₦1.4M — compact for cards, abbreviates above 10k
+  static String formatCompact(double value) {
+    final abs = value.abs();
+    final prefix = value < 0 ? '-' : '';
+    if (abs >= 1000000) {
+      return '$prefix$_symbol${(abs / 1000000).toStringAsFixed(1)}M';
+    }
+    if (abs >= 10000) {
+      return '$prefix$_symbol${(abs / 1000).toStringAsFixed(1)}k';
+    }
+    // Under 10,000 — show full to avoid ambiguity
+    return '$prefix$_symbol${_formatWithCommas(abs)}';
+  }
+
+  /// +₦1.2M / -₦234k — for profit/loss display
+  static String formatProfit(double value) {
+    if (value > 0) return '+${formatCompact(value)}';
+    if (value < 0) return '-${formatCompact(-value)}';
+    return '${_symbol}0';
+  }
+
+  /// 1.2M / 234k / 999 — compact without symbol, for non-money numbers
+  static String formatNumber(double value) {
+    if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(1)}M';
+    if (value >= 1000) return '${(value / 1000).toStringAsFixed(0)}k';
+    return value.toStringAsFixed(0);
+  }
+
+  static String _formatWithCommas(double value) {
+    final parts = value.toStringAsFixed(0).split('');
+    final result = StringBuffer();
+    final len = parts.length;
+    for (int i = 0; i < len; i++) {
+      if (i > 0 && (len - i) % 3 == 0) result.write(',');
+      result.write(parts[i]);
+    }
+    return result.toString();
   }
 }

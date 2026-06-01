@@ -1,42 +1,79 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'supabase_config.dart';
-
+/// Handles all Supabase authentication for PoultryPro.
+///
+/// Flow:
+///   1. App launches → [signInAnonymously] called automatically
+///   2. User taps "Secure my backup" → [sendPhoneOtp] called
+///   3. User enters 6-digit code   → [verifyPhoneOtp] called
+///   4. Anonymous account is upgraded to a phone-linked account
+///      (same user id, data is preserved)
 class SupabaseAuthService {
-  SupabaseClient? get _client =>
-      SupabaseConfig.isConfigured ? Supabase.instance.client : null;
+  SupabaseClient get _client => Supabase.instance.client;
 
-  User? get currentUser => _client?.auth.currentUser;
+  // ─── Current user ──────────────────────────────────────────────────────────
 
+  User? get currentUser => _client.auth.currentUser;
   String? get currentUserId => currentUser?.id;
+  bool get isAuthenticated => currentUser != null;
+  bool get isAnonymous =>
+      currentUser?.isAnonymous ?? true;
 
-  bool get isSignedIn => currentUser != null;
+  // ─── Anonymous sign-in ─────────────────────────────────────────────────────
 
-  Future<void> signInWithEmailOtp(String email) async {
-    final client = _requireClient();
-    await client.auth.signInWithOtp(email: email.trim());
+  /// Signs in anonymously. Creates a real Supabase user with a UUID but no
+  /// credentials. Their data is stored server-side under this UUID.
+  /// Safe to call multiple times — returns immediately if already signed in.
+  Future<void> signInAnonymously() async {
+    if (isAuthenticated) return;
+    try {
+      await _client.auth.signInAnonymously();
+      debugPrint('Auth: signed in anonymously as ${currentUserId}');
+    } catch (e) {
+      debugPrint('Auth: anonymous sign-in failed: $e');
+      rethrow;
+    }
   }
 
-  Future<void> verifyEmailOtp(String email, String token) async {
-    final client = _requireClient();
-    await client.auth.verifyOTP(
-      email: email.trim(),
-      token: token.trim(),
-      type: OtpType.email,
-    );
+  // ─── Phone OTP upgrade ─────────────────────────────────────────────────────
+
+  /// Sends a 6-digit OTP to [phone].
+  /// Phone must be in E.164 format — e.g. +2348012345678
+  Future<void> sendPhoneOtp(String phone) async {
+    try {
+      await _client.auth.signInWithOtp(phone: phone);
+      debugPrint('Auth: OTP sent to $phone');
+    } catch (e) {
+      debugPrint('Auth: OTP send failed: $e');
+      rethrow;
+    }
   }
+
+  /// Verifies the OTP and links the phone number to the anonymous account.
+  /// The user ID stays the same — all existing data is preserved.
+  Future<void> verifyPhoneOtp(String phone, String token) async {
+    try {
+      await _client.auth.verifyOTP(
+        phone: phone,
+        token: token,
+        type: OtpType.sms,
+      );
+      debugPrint('Auth: phone verified for ${currentUserId}');
+    } catch (e) {
+      debugPrint('Auth: OTP verification failed: $e');
+      rethrow;
+    }
+  }
+
+  // ─── Sign out ──────────────────────────────────────────────────────────────
 
   Future<void> signOut() async {
-    final client = _client;
-    if (client == null) return;
-    await client.auth.signOut();
+    await _client.auth.signOut();
   }
 
-  SupabaseClient _requireClient() {
-    final client = _client;
-    if (client == null) {
-      throw StateError('Supabase is not configured yet.');
-    }
-    return client;
-  }
+  // ─── Auth state stream ─────────────────────────────────────────────────────
+
+  Stream<AuthState> get authStateChanges =>
+      _client.auth.onAuthStateChange;
 }

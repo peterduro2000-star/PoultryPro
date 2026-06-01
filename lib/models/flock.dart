@@ -5,8 +5,8 @@ class Flock {
   final int birdCount;
   final int initialBirdCount;
   final double costPerBird;
-  final String startDate; // date stocked (when you bought them)
-  final int ageAtStocking; // age in days when purchased (0 = day-old chicks)
+  final String startDate;
+  final int ageAtStocking;
   final String status;
   final String? breed;
   final String? source;
@@ -15,8 +15,7 @@ class Flock {
   final String createdAt;
   final String updatedAt;
 
-  // ─── New sync metadata fields ───────────────────────────────────────────
-  final String? lastModified; // ISO 8601 string
+  final String? lastModified;
   final String syncStatus;
   final String? serverId;
   final bool deleted;
@@ -45,17 +44,31 @@ class Flock {
 
   double get initialCost => initialBirdCount * costPerBird;
 
-  // Current age in days
+  // ─── Convenience getters ──────────────────────────────────────────────────
+
+  /// True when the flock type suggests a laying bird.
+  bool get isLayer {
+    final t = type.toLowerCase();
+    return t.contains('layer') || t.contains('noiler') || t.contains('local');
+  }
+
+  /// Alias used by finance calculations — same as initialBirdCount.
+  int get initialBirds => initialBirdCount;
+
+  /// Mortality so far = initialBirdCount − birdCount (floor at 0).
+  int get totalMortality =>
+      (initialBirdCount - birdCount).clamp(0, initialBirdCount);
+
+  // ─── Age ──────────────────────────────────────────────────────────────────
+
   int get currentAgeDays {
     final stocked = DateTime.tryParse(startDate) ?? DateTime.now();
     final daysSinceStocking = DateTime.now().difference(stocked).inDays;
     return ageAtStocking + daysSinceStocking;
   }
 
-  // Current age in weeks
   int get currentAgeWeeks => currentAgeDays ~/ 7;
 
-  // Human readable age string
   String get ageDisplay {
     final days = currentAgeDays;
     final weeks = currentAgeWeeks;
@@ -67,7 +80,8 @@ class Flock {
     return '$months month${months == 1 ? '' : 's'} old ($weeks weeks)';
   }
 
-  // Vaccination schedule based on bird type and current age
+  // ─── Vaccination ──────────────────────────────────────────────────────────
+
   List<VaccinationMilestone> get vaccinationSchedule {
     if (type.toLowerCase().contains('broiler')) {
       return [
@@ -76,7 +90,9 @@ class Flock {
             name: 'Newcastle + IB (Hitchner B1)',
             done: currentAgeDays >= 1),
         VaccinationMilestone(
-            day: 7, name: 'Gumboro (IBD) 1st dose', done: currentAgeDays >= 7),
+            day: 7,
+            name: 'Gumboro (IBD) 1st dose',
+            done: currentAgeDays >= 7),
         VaccinationMilestone(
             day: 14,
             name: 'Newcastle (Lasota) + Gumboro 2nd dose',
@@ -89,7 +105,6 @@ class Flock {
             done: currentAgeDays >= 28),
       ];
     } else {
-      // Layers / Noiler / Local
       return [
         VaccinationMilestone(
             day: 1,
@@ -125,13 +140,13 @@ class Flock {
     }
   }
 
-  // Next upcoming vaccination
   VaccinationMilestone? get nextVaccination {
     final upcoming = vaccinationSchedule.where((v) => !v.done).toList();
     return upcoming.isEmpty ? null : upcoming.first;
   }
 
-  // Production stage
+  // ─── Production stage ─────────────────────────────────────────────────────
+
   String get productionStage {
     final weeks = currentAgeWeeks;
     if (type.toLowerCase().contains('broiler')) {
@@ -146,6 +161,8 @@ class Flock {
       return 'Spent — consider culling';
     }
   }
+
+  // ─── Serialisation ────────────────────────────────────────────────────────
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -163,7 +180,6 @@ class Flock {
         'notes': notes,
         'createdAt': createdAt,
         'updatedAt': updatedAt,
-        // Sync metadata
         'lastModified': lastModified,
         'syncStatus': syncStatus,
         'serverId': serverId,
@@ -187,7 +203,6 @@ class Flock {
         notes: map['notes'] as String?,
         createdAt: map['createdAt'] as String,
         updatedAt: map['updatedAt'] as String,
-        // Sync metadata
         lastModified: map['lastModified'] as String?,
         syncStatus: map['syncStatus'] as String? ?? 'local',
         serverId: map['serverId'] as String?,
@@ -238,6 +253,17 @@ class Flock {
     );
   }
 }
+
+// ─── FlockStatus constants ────────────────────────────────────────────────────
+
+class FlockStatus {
+  FlockStatus._();
+  static const String active   = 'active';
+  static const String inactive = 'inactive';
+  static const String soldOut  = 'sold out';
+  static const String lost     = 'lost';
+}
+
 // ─── Vaccination Milestone ────────────────────────────────────────────────────
 
 class VaccinationMilestone {
@@ -251,5 +277,6 @@ class VaccinationMilestone {
     required this.done,
   });
 
-  int daysUntil(int currentAgeDays) => (day - currentAgeDays).clamp(0, 9999);
+  /// Negative means overdue.
+  int daysUntil(int currentAgeDays) => day - currentAgeDays;
 }

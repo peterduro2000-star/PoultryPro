@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
+import 'batch_comparison_screen.dart';
 import '../models/daily_record.dart';
 import '../models/flock.dart';
 import '../providers/daily_record_provider.dart';
+import '../providers/alerts_provider.dart';
+import '../widgets/alerts_panel.dart';
+import '../services/database_service.dart';
 import '../providers/finance_provider.dart';
 import '../providers/flock_provider.dart';
 import '../theme/app_theme.dart';
@@ -26,6 +29,8 @@ class FlockWorkspaceScreen extends StatefulWidget {
 }
 
 class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
+  int _currentIndex = 0;
+
   @override
   void initState() {
     super.initState();
@@ -35,30 +40,41 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
   }
 
   Future<void> _loadWorkspaceData() async {
+    if (!mounted) return;
     final flock = _currentFlock(context);
     await context.read<DailyRecordProvider>().loadLatestRecords([flock.id]);
     await context.read<DailyRecordProvider>().loadMortalityTotals([flock.id]);
     await context.read<FinanceProvider>().loadFarmFinanceData();
-  }
 
-  int _currentIndex = 0; // For bottom nav highlight
+    // Refresh alerts for this flock after records/finance are loaded
+    if (mounted) {
+      final records = await DatabaseService().getDailyRecordsByFlock(flock.id);
+      final recovery = context.read<FinanceProvider>().recoveryPercentageForFlock(flock.id);
+      await context.read<AlertsProvider>().refreshAlertsForFlock(
+            flock: flock,
+            records: records,
+            recoveryPercentage: recovery,
+          );
+    }
+  }
 
   Flock _currentFlock(BuildContext context) {
     final provider = context.read<FlockProvider>();
     return provider.flocks.firstWhere(
-      (flock) => flock.id == widget.flock.id,
+      (f) => f.id == widget.flock.id,
       orElse: () => widget.flock,
     );
   }
 
+  // ── Bottom nav pushes module screens; each screen reads
+  //    selected flock from FlockProvider — no flock: param needed.
   void _onBottomNavTapped(int index) {
     final screens = [
-      RecordsScreen(flock: widget.flock),
-      FinanceScreen(flock: widget.flock),
-      HealthScreen(flock: widget.flock),
-      StockScreen(flock: widget.flock),
+      const RecordsScreen(),
+      const FinanceScreen(),
+      const HealthScreen(),
+      const StockScreen(),
     ];
-
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => screens[index]),
@@ -73,20 +89,28 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
           (item) => item.id == widget.flock.id,
           orElse: () => widget.flock,
         );
+
+        // Ensure this flock is the selected one so module screens
+        // load the right data when pushed from here.
+        if (flockProvider.selectedFlock?.id != flock.id) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            flockProvider.selectFlock(flock);
+          });
+        }
+
         final mortalityTotal = recordProvider.mortalityTotalFor(flock.id);
         final recovery = financeProvider.recoveryPercentageForFlock(flock.id);
+
+        // Use the updated FinanceProvider signatures (no initialBirds/totalMortality)
         final breakEven = financeProvider.breakEvenPerBirdForFlockDisplay(
           flockId: flock.id,
           currentBirds: flock.birdCount,
-          initialBirds: flock.initialBirdCount,
-          totalMortality: mortalityTotal,
         );
         final breakEvenValue = financeProvider.breakEvenPerBirdForFlock(
           flockId: flock.id,
           currentBirds: flock.birdCount,
-          initialBirds: flock.initialBirdCount,
-          totalMortality: mortalityTotal,
         );
+
         final soldBirds = financeProvider
             .farmSalesForFlock(flock.id)
             .where((sale) =>
@@ -113,7 +137,9 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
               ),
               children: [
                 _buildHeader(flock, isSoldOut: isSoldOut),
-                const SizedBox(height: AppTheme.spacingLG),
+                const SizedBox(height: AppTheme.spacingMD),
+                AlertsPanel(flockId: flock.id),
+                const SizedBox(height: AppTheme.spacingSM),
                 _buildSnapshotCard(
                   flock: flock,
                   mortalityTotal: mortalityTotal,
@@ -135,7 +161,7 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
+                  color: Colors.black.withValues(alpha: 0.08),
                   blurRadius: 10,
                   offset: const Offset(0, -2),
                 ),
@@ -225,7 +251,8 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: isSoldOut
                       ? AppTheme.infoColor
@@ -248,7 +275,8 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
           if (!isSoldOut && next != null && daysLeft != null) ...[
             const SizedBox(height: AppTheme.spacingMD),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: AppTheme.successColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(14),
@@ -293,7 +321,8 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
             runSpacing: AppTheme.spacingMD,
             children: [
               _SnapshotItem('Current Birds', flock.birdCount.toString()),
-              _SnapshotItem('Initial Birds', flock.initialBirdCount.toString()),
+              _SnapshotItem(
+                  'Initial Birds', flock.initialBirdCount.toString()),
               _SnapshotItem(
                   'Status', isSoldOut ? 'Completed' : flock.ageDisplay),
               _SnapshotItem(
@@ -313,74 +342,6 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
     );
   }
 
-  Widget _buildQuickActions(Flock flock) {
-    final actions = [
-      _QuickActionData(
-        icon: Icons.assignment_outlined,
-        title: 'Records',
-        onTap: () => _openModule(RecordsScreen(flock: flock)),
-      ),
-      _QuickActionData(
-        icon: Icons.payments_outlined,
-        title: 'Finance',
-        onTap: () => _openModule(FinanceScreen(flock: flock)),
-      ),
-      _QuickActionData(
-        icon: Icons.favorite_outline,
-        title: 'Health',
-        onTap: () => _openModule(HealthScreen(flock: flock)),
-      ),
-      _QuickActionData(
-        icon: Icons.inventory_2_outlined,
-        title: 'Stock',
-        onTap: () => _openModule(StockScreen(flock: flock)),
-      ),
-    ];
-
-    return Container(
-      decoration: AppTheme.cardDecoration,
-      padding: const EdgeInsets.all(AppTheme.spacingMD),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Quick Actions', style: AppTheme.headingSmall),
-          const SizedBox(height: AppTheme.spacingMD),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 520 ? 5 : 3;
-              return GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: actions.length,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columns,
-                  crossAxisSpacing: AppTheme.spacingSM,
-                  mainAxisSpacing: AppTheme.spacingSM,
-                  childAspectRatio: columns == 5 ? 1.05 : 1.0,
-                ),
-                itemBuilder: (context, index) {
-                  final action = actions[index];
-                  return _QuickActionTile(
-                    icon: action.icon,
-                    title: action.title,
-                    onTap: action.onTap,
-                  );
-                },
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _openModule(Widget screen) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => screen),
-    );
-  }
-
   Widget _buildTodayActivity(Flock flock, DailyRecord? latest) {
     return Container(
       decoration: AppTheme.cardDecoration,
@@ -393,8 +354,8 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
           if (latest == null)
             Text(
               'No records yet today.',
-              style:
-                  AppTheme.bodyMedium.copyWith(color: AppTheme.textSecondary),
+              style: AppTheme.bodyMedium
+                  .copyWith(color: AppTheme.textSecondary),
             )
           else
             Row(
@@ -430,36 +391,62 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
     double recoveryPercentage,
     String breakEvenDisplay,
   ) {
+    final flockCount = context.read<FlockProvider>().flocks.length;
     final message = latest == null
         ? 'Start recording daily activity to see flock insights.'
-        : 'Recovered ${recoveryPercentage.toStringAsFixed(0)}%. Break-even is $breakEvenDisplay per bird.';
+        : 'Recovered ${recoveryPercentage.toStringAsFixed(0)}%. '
+            'Break-even is $breakEvenDisplay per bird.';
 
     return Container(
       decoration: AppTheme.cardDecoration,
       padding: const EdgeInsets.all(AppTheme.spacingMD),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.insights_outlined, color: AppTheme.primaryColor),
-          const SizedBox(width: AppTheme.spacingSM),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Flock Insights', style: AppTheme.headingSmall),
-                const SizedBox(height: 2),
-                Text(
-                  message,
-                  style: AppTheme.bodySmall
-                      .copyWith(color: AppTheme.textSecondary),
-                ),
-              ],
-            ),
+          Row(
+            children: [
+              Icon(Icons.insights_outlined, color: AppTheme.primaryColor),
+              const SizedBox(width: AppTheme.spacingSM),
+              Text('Flock Insights', style: AppTheme.headingSmall),
+            ],
           ),
+          const SizedBox(height: AppTheme.spacingSM),
+          Text(
+            message,
+            style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
+          ),
+          if (flockCount >= 2) ...[
+            const SizedBox(height: AppTheme.spacingMD),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const BatchComparisonScreen(),
+                  ),
+                ),
+                icon: const Icon(Icons.compare_arrows, size: 16),
+                label: const Text('Compare with another batch'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.primaryColor,
+                  side: const BorderSide(color: AppTheme.primaryColor),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                      vertical: AppTheme.spacingSM),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 }
+
+// ─── Snapshot Item ────────────────────────────────────────────────────────────
 
 class _SnapshotItem extends StatelessWidget {
   final String label;
@@ -488,74 +475,6 @@ class _SnapshotItem extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _QuickActionData {
-  final IconData icon;
-  final String title;
-  final VoidCallback onTap;
-
-  const _QuickActionData({
-    required this.icon,
-    required this.title,
-    required this.onTap,
-  });
-}
-
-class _QuickActionTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final VoidCallback onTap;
-
-  const _QuickActionTile({
-    required this.icon,
-    required this.title,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(AppTheme.radiusMD),
-      elevation: 1,
-      shadowColor: Colors.black.withValues(alpha: 0.08),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppTheme.radiusMD),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppTheme.spacingSM,
-            vertical: AppTheme.spacingSM,
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(AppTheme.radiusSM),
-                ),
-                child: Icon(icon, color: AppTheme.primaryColor, size: 20),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                title,
-                style: AppTheme.bodySmall.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textPrimary,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
