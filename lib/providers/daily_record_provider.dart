@@ -71,7 +71,7 @@ class DailyRecordProvider extends ChangeNotifier {
       final futures = flockIds.map((flockId) async {
         try {
           _mortalityTotals[flockId] =
-              await _db.getTotalMortalityByFlock(flockId);
+              (await _db.getTotalMortalityByFlock(flockId)).toInt();
         } catch (e) {
           _mortalityTotals[flockId] = 0;
           if (kDebugMode) debugPrint('Failed mortality total for $flockId: $e');
@@ -98,7 +98,8 @@ class DailyRecordProvider extends ChangeNotifier {
 
   Future<void> refreshMortalityTotal(String flockId) async {
     try {
-      final total = await _db.getTotalMortalityByFlock(flockId);
+      final totalResult = await _db.getTotalMortalityByFlock(flockId);
+      final total = totalResult.toInt();
       if (_mortalityTotals[flockId] != total) {
         _mortalityTotals[flockId] = total;
         notifyListeners();

@@ -72,32 +72,41 @@ class FlockHeader extends StatelessWidget {
                     const SizedBox(height: 2),
                     // Secondary info row
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          '${flock.birdCount} birds  •  ${flock.type}',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.85),
-                            fontSize: 11,
+                        Flexible(
+                          child: Text(
+                            '${flock.birdCount} birds  •  ${flock.type}',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.85),
+                              fontSize: 11,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                         ),
                         const SizedBox(width: 6),
-                        // Status badge — small, at bottom
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: flock.status == 'active'
-                                ? AppTheme.successColor
-                                : AppTheme.textSecondary,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            flock.status.toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
+                        // Status badge
+                        IntrinsicWidth(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: flock.status == 'active'
+                                  ? AppTheme.successColor
+                                  : AppTheme.textSecondary,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              flock.status.toUpperCase(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
                           ),
                         ),

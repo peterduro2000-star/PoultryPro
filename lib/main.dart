@@ -7,9 +7,11 @@ import 'providers/auth_provider.dart';
 import 'providers/daily_record_provider.dart';
 import 'providers/finance_provider.dart';
 import 'providers/flock_provider.dart';
+import 'providers/license_provider.dart';
 import 'providers/health_provider.dart';
 import 'providers/stock_provider.dart';
 import 'screens/main_navigation_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'services/database_service.dart';
 import 'services/supabase_config.dart';
 import 'services/sync_service.dart';
@@ -28,7 +30,7 @@ void main() async {
     debugPrint('Supabase init failed (non-fatal): $e');
   }
 
-  // DB init — migration crash must never leave user on white screen
+  // DB init
   try {
     await DatabaseService().initialize();
   } catch (e) {
@@ -46,6 +48,7 @@ class PoultryProApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => LicenseProvider()),
         ChangeNotifierProvider(create: (_) => SyncService()),
         ChangeNotifierProvider(create: (_) => FlockProvider()),
         ChangeNotifierProvider(create: (_) => FinanceProvider()),
@@ -76,6 +79,8 @@ class _AppBootstrap extends StatefulWidget {
 }
 
 class _AppBootstrapState extends State<_AppBootstrap> {
+  bool _bootComplete = false;
+
   @override
   void initState() {
     super.initState();
@@ -83,12 +88,19 @@ class _AppBootstrapState extends State<_AppBootstrap> {
   }
 
   Future<void> _boot() async {
-    await Future.delayed(Duration.zero); // Let widget tree settle first
+    await Future.delayed(Duration.zero);
+    if (!mounted) return;
     try {
       final auth = context.read<AuthProvider>();
       final sync = context.read<SyncService>();
+      final license = context.read<LicenseProvider>();
 
-      // 30-second timeout — Infinix battery optimisation can block network
+      sync.setLicense(license);
+      onDataChanged = () => sync.scheduleSync();
+      await license.loadCachedEntitlement();
+
+      await auth.checkFirstLaunch();
+
       await auth.initSession().timeout(
         const Duration(seconds: 30),
         onTimeout: () {
@@ -98,17 +110,57 @@ class _AppBootstrapState extends State<_AppBootstrap> {
 
       if (auth.isAuthenticated) {
         sync.startPeriodicSync();
-        unawaited(sync.syncNow());
+        unawaited(license.loadEntitlement());
       }
     } catch (e) {
-      // Boot error must never leave the user on a white screen
       debugPrint('Boot error (non-fatal): $e');
+    } finally {
+      if (mounted) setState(() => _bootComplete = true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return const MainNavigationScreen();
+    // Still booting — show splash instead of white screen
+    if (!_bootComplete) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundColor,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.egg_alt,
+                  size: 64,
+                  color: AppTheme.primaryColor.withValues(alpha: 0.8)),
+              const SizedBox(height: 16),
+              Text('Poultry Pro',
+                  style: AppTheme.headingMedium
+                      .copyWith(color: AppTheme.primaryColor)),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Consumer<AuthProvider>(
+      builder: (context, auth, _) {
+        if (auth.isFirstLaunch) {
+          return OnboardingScreen(
+            onComplete: () => setState(() {}),
+          );
+        }
+        return const MainNavigationScreen();
+      },
+    );
   }
 }
 

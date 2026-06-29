@@ -1,6 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:screenshot/screenshot.dart';
+import 'package:share_plus/share_plus.dart';
 import 'batch_comparison_screen.dart';
+import '../widgets/share_performance_card.dart';
 import '../models/daily_record.dart';
 import '../models/flock.dart';
 import '../providers/daily_record_provider.dart';
@@ -9,6 +15,7 @@ import '../widgets/alerts_panel.dart';
 import '../services/database_service.dart';
 import '../providers/finance_provider.dart';
 import '../providers/flock_provider.dart';
+import '../providers/license_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/currency_formatter.dart';
 import 'finance_screen.dart';
@@ -29,6 +36,9 @@ class FlockWorkspaceScreen extends StatefulWidget {
 }
 
 class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
+  final ScreenshotController _screenshotController = ScreenshotController();
+  static final NumberFormat _numberFormat = NumberFormat.decimalPattern();
+
   int _currentIndex = 0;
 
   @override
@@ -42,20 +52,26 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
   Future<void> _loadWorkspaceData() async {
     if (!mounted) return;
     final flock = _currentFlock(context);
-    await context.read<DailyRecordProvider>().loadLatestRecords([flock.id]);
-    await context.read<DailyRecordProvider>().loadMortalityTotals([flock.id]);
-    await context.read<FinanceProvider>().loadFarmFinanceData();
+    final dailyRecordProvider = context.read<DailyRecordProvider>();
+    final financeProvider = context.read<FinanceProvider>();
+    final alertsProvider = context.read<AlertsProvider>();
+
+    await dailyRecordProvider.loadLatestRecords([flock.id]);
+    await dailyRecordProvider.loadMortalityTotals([flock.id]);
+    await financeProvider.loadFarmFinanceData();
 
     // Refresh alerts for this flock after records/finance are loaded
-    if (mounted) {
-      final records = await DatabaseService().getDailyRecordsByFlock(flock.id);
-      final recovery = context.read<FinanceProvider>().recoveryPercentageForFlock(flock.id);
-      await context.read<AlertsProvider>().refreshAlertsForFlock(
-            flock: flock,
-            records: records,
-            recoveryPercentage: recovery,
-          );
-    }
+    final records = await DatabaseService().getDailyRecordsByFlock(flock.id);
+    if (!mounted) return;
+
+    final licenseProvider = context.read<LicenseProvider>();
+    final recovery = financeProvider.recoveryPercentageForFlock(flock.id);
+    await alertsProvider.refreshAlertsForFlock(
+          flock: flock,
+          records: records,
+          recoveryPercentage: recovery,
+          isPro: licenseProvider.isPro,
+        );
   }
 
   Flock _currentFlock(BuildContext context) {
@@ -125,6 +141,17 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
           appBar: AppBar(
             title: Text(flock.name),
             elevation: 0,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.share_outlined),
+                tooltip: 'Share results',
+                onPressed: () => _shareResults(
+                  flock: flock,
+                  financeProvider: financeProvider,
+                  mortalityTotal: mortalityTotal,
+                ),
+              ),
+            ],
           ),
           body: RefreshIndicator(
             onRefresh: _loadWorkspaceData,
@@ -209,6 +236,62 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
     );
   }
 
+  Future<void> _shareResults({
+    required Flock flock,
+    required FinanceProvider financeProvider,
+    required int mortalityTotal,
+  }) async {
+    final totalExpenses = financeProvider.totalExpensesForFlock(flock.id);
+    final totalSales = financeProvider.totalSalesForFlock(flock.id);
+    final profit = totalSales - totalExpenses;
+    final costPerBird = flock.birdCount > 0
+        ? totalExpenses / flock.birdCount
+        : flock.costPerBird;
+    final mortalityRate = flock.initialBirdCount > 0
+        ? mortalityTotal / flock.initialBirdCount * 100
+        : 0.0;
+    final breakEven = financeProvider.breakEvenPerBirdForFlockDisplay(
+      flockId: flock.id,
+      currentBirds: flock.birdCount,
+    );
+    final recovery = financeProvider.recoveryPercentageForFlock(flock.id);
+
+    try {
+      final imageBytes = await _screenshotController.captureFromLongWidget(
+        SharePerformanceCard(
+          flock: flock,
+          totalExpenses: totalExpenses,
+          totalSales: totalSales,
+          profit: profit,
+          mortalityRate: mortalityRate,
+          costPerBird: costPerBird,
+          breakEvenDisplay: breakEven,
+          recoveryPercentage: recovery,
+        ),
+        pixelRatio: 2.0,
+      );
+
+      final dir = await getTemporaryDirectory();
+      final file = File(
+          '${dir.path}/poultrypro_${flock.name.replaceAll(' ', '_')}.png');
+      await file.writeAsBytes(imageBytes);
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: '${flock.name} batch results from PoultryPro 🐔',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not share: $e'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildHeader(Flock flock, {required bool isSoldOut}) {
     final next = flock.nextVaccination;
     final daysLeft = next?.daysUntil(flock.currentAgeDays);
@@ -243,7 +326,7 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
-                      '${flock.type} • ${flock.birdCount} birds • $stageText',
+                      '${flock.type} • ${_numberFormat.format(flock.birdCount)} birds • $stageText',
                       style: AppTheme.bodySmall
                           .copyWith(color: AppTheme.textSecondary),
                     ),
@@ -320,9 +403,9 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
             spacing: AppTheme.spacingMD,
             runSpacing: AppTheme.spacingMD,
             children: [
-              _SnapshotItem('Current Birds', flock.birdCount.toString()),
+              _SnapshotItem('Current Birds', _numberFormat.format(flock.birdCount)),
               _SnapshotItem(
-                  'Initial Birds', flock.initialBirdCount.toString()),
+                  'Initial Birds', _numberFormat.format(flock.initialBirdCount)),
               _SnapshotItem(
                   'Status', isSoldOut ? 'Completed' : flock.ageDisplay),
               _SnapshotItem(
@@ -333,7 +416,7 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
               if (mortalityTotal > 0 && breakEvenValue > 0)
                 _SnapshotItem(
                   'Mortality loss',
-                  CurrencyFormatter.formatCompact(mortalityLoss),
+                  CurrencyFormatter.formatFull(mortalityLoss),
                 ),
             ],
           ),
@@ -363,14 +446,14 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
                 Expanded(
                   child: _SnapshotItem(
                     'Mortality',
-                    (latest.mortalityCount ?? 0).toString(),
+                    _numberFormat.format(latest.mortalityCount ?? 0),
                   ),
                 ),
                 if (flock.isLayer)
                   Expanded(
                     child: _SnapshotItem(
                       'Eggs',
-                      (latest.eggsCollected ?? 0).toString(),
+                      _numberFormat.format(latest.eggsCollected ?? 0),
                     ),
                   ),
                 Expanded(
@@ -392,6 +475,7 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
     String breakEvenDisplay,
   ) {
     final flockCount = context.read<FlockProvider>().flocks.length;
+    final isPro = context.read<LicenseProvider>().isPro;
     final message = latest == null
         ? 'Start recording daily activity to see flock insights.'
         : 'Recovered ${recoveryPercentage.toStringAsFixed(0)}%. '
@@ -415,7 +499,7 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
             message,
             style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
           ),
-          if (flockCount >= 2) ...[
+          if (isPro && flockCount >= 2) ...[
             const SizedBox(height: AppTheme.spacingMD),
             SizedBox(
               width: double.infinity,
@@ -461,11 +545,14 @@ class _SnapshotItem extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            value,
-            style: AppTheme.bodyLarge.copyWith(fontWeight: FontWeight.w700),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: AppTheme.bodyLarge.copyWith(fontWeight: FontWeight.w700),
+              maxLines: 1,
+            ),
           ),
           const SizedBox(height: 2),
           Text(

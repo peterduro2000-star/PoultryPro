@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/supabase_auth_service.dart';
-
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../providers/auth_provider.dart';
 enum AuthStatus { unknown, anonymous, verified }
 
 class AuthProvider extends ChangeNotifier {
@@ -12,21 +14,36 @@ class AuthProvider extends ChangeNotifier {
   }
 
   String? _userId;
-  String? _pendingPhone;
+  String? _pendingEmail; // ← was _pendingPhone
   AuthStatus _status = AuthStatus.unknown;
+  bool _isFirstLaunch = true;
   bool _isLoading = false;
   String? _error;
 
-  String?    get userId          => _userId;
-  String?    get pendingPhone    => _pendingPhone;
-  AuthStatus get status          => _status;
+  String?    get userId         => _userId;
+  String?    get pendingEmail   => _pendingEmail; // ← was pendingPhone
+  bool       get isFirstLaunch  => _isFirstLaunch;
+  AuthStatus get status         => _status;
   bool       get isAuthenticated => _userId != null;
-  bool       get isAnonymous     => _status == AuthStatus.anonymous;
-  bool       get isVerified      => _status == AuthStatus.verified;
-  bool       get isLoading       => _isLoading;
-  String?    get error           => _error;
+  bool       get isAnonymous    => _status == AuthStatus.anonymous;
+  bool       get isVerified     => _status == AuthStatus.verified;
+  bool       get isLoading      => _isLoading;
+  String?    get error          => _error;
 
   // ─── Initialisation ────────────────────────────────────────────────────────
+
+  Future<void> checkFirstLaunch() async {
+    final prefs = await SharedPreferences.getInstance();
+    _isFirstLaunch = prefs.getBool('is_first_launch') ?? true;
+    notifyListeners();
+  }
+
+  Future<void> completeOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_first_launch', false);
+    _isFirstLaunch = false;
+    notifyListeners();
+  }
 
   void _resolveStatus() {
     if (!_authService.isAuthenticated) {
@@ -40,8 +57,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Called once at app startup from _AppBootstrap.
-  /// Signs in anonymously if no session exists yet.
   Future<void> initSession() async {
     _setLoading();
     try {
@@ -62,15 +77,14 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ─── Phone OTP upgrade ─────────────────────────────────────────────────────
+  // ─── Email OTP upgrade ─────────────────────────────────────────────────────
 
-  /// Step 1 — sends OTP to [phone] (E.164: +2348012345678).
-  /// Returns true on success so callers can advance the UI step.
-  Future<bool> sendOtp(String phone) async {
+  /// Step 1 — sends OTP to [email].
+  Future<bool> sendOtp(String email) async {
     _setLoading();
     try {
-      await _authService.sendPhoneOtp(phone);
-      _pendingPhone = phone;
+      await _authService.sendEmailOtp(email);
+      _pendingEmail = email;
       _error = null;
       return true;
     } catch (e) {
@@ -84,31 +98,46 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Step 2 — verifies the 6-digit OTP.
-  /// On success, anonymous account is upgraded to phone-verified.
+  /// Upgrades anonymous account to email-verified.
   /// User ID stays the same — all existing data is preserved.
-  Future<bool> verifyOtp(String token) async {
-    _setLoading();
-    try {
-      final phone = _pendingPhone;
-      if (phone == null) {
-        throw Exception('No pending phone number. Request a code first.');
-      }
-      await _authService.verifyPhoneOtp(phone, token);
-      _userId = _authService.currentUserId;
-      _status = AuthStatus.verified;
-      _pendingPhone = null;
-      _error = null;
-      return true;
-    } catch (e) {
-      _error = _friendlyError(e);
-      debugPrint('AuthProvider.verifyOtp: $e');
-      return false;
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
+ Future<bool> verifyOtp(String token) async {
+  _setLoading();
 
+  try {
+    final email = _pendingEmail;
+
+    if (email == null) {
+      throw Exception('No pending email.');
+    }
+
+    await _authService.verifyEmailOtp(email, token);
+    await Supabase.instance.client.auth.refreshSession();
+
+    // 🔥 CRITICAL FIX: force Supabase client refresh
+    await Supabase.instance.client.auth.refreshSession();
+
+    final user = Supabase.instance.client.auth.currentUser;
+
+    if (user == null) {
+      throw Exception('Session not created after verification');
+    }
+
+    _userId = user.id;
+    _status = AuthStatus.verified;
+    _pendingEmail = null;
+    _error = null;
+
+    return true;
+
+  } catch (e) {
+    _error = _friendlyError(e);
+    debugPrint('AuthProvider.verifyOtp: $e');
+    return false;
+  } finally {
+    _isLoading = false;
+    notifyListeners();
+  }
+}
   // ─── Sign out ──────────────────────────────────────────────────────────────
 
   Future<void> signOut() async {
@@ -116,7 +145,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       await _authService.signOut();
       _userId = null;
-      _pendingPhone = null;
+      _pendingEmail = null;
       _status = AuthStatus.unknown;
       _error = null;
     } catch (e) {
@@ -143,8 +172,8 @@ class AuthProvider extends ChangeNotifier {
 
   String _friendlyError(Object e) {
     final msg = e.toString().toLowerCase();
-    if (msg.contains('invalid') && msg.contains('phone')) {
-      return 'Enter a valid phone number with country code, e.g. +2348012345678';
+    if (msg.contains('invalid') && msg.contains('email')) {
+      return 'Enter a valid email address.';
     }
     if (msg.contains('expired') || msg.contains('invalid otp')) {
       return 'Code expired or incorrect. Tap Resend and try again.';

@@ -4,10 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../theme/app_theme.dart';
 
-/// "Secure your backup" screen — shown as a bottom sheet or full screen
-/// when an anonymous user taps the backup nudge.
-///
-/// Upgrades anonymous account → phone-verified account.
+/// "Secure your backup" screen — upgrades anonymous → email-verified account.
 /// User ID stays the same; all data is preserved.
 class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
@@ -17,7 +14,7 @@ class BackupScreen extends StatefulWidget {
 }
 
 class _BackupScreenState extends State<BackupScreen> {
-  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController(); // ← was phone
   final _otpController   = TextEditingController();
   final _formKey         = GlobalKey<FormState>();
 
@@ -25,7 +22,7 @@ class _BackupScreenState extends State<BackupScreen> {
 
   @override
   void dispose() {
-    _phoneController.dispose();
+    _emailController.dispose();
     _otpController.dispose();
     super.dispose();
   }
@@ -33,7 +30,7 @@ class _BackupScreenState extends State<BackupScreen> {
   Future<void> _sendOtp() async {
     if (!_formKey.currentState!.validate()) return;
     final auth = context.read<AuthProvider>();
-    await auth.sendOtp(_phoneController.text.trim());
+    await auth.sendOtp(_emailController.text.trim());
     if (auth.error == null && mounted) {
       setState(() => _otpSent = true);
     }
@@ -44,16 +41,23 @@ class _BackupScreenState extends State<BackupScreen> {
     final auth = context.read<AuthProvider>();
     final success = await auth.verifyOtp(_otpController.text.trim());
     if (success && mounted) {
-      Navigator.of(context).pop();
+
+  await Future.delayed(
+    const Duration(milliseconds: 500),
+  );
+
+  Navigator.of(context).pop(true);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Colors.white, size: 18),
-              const SizedBox(width: 8),
-              const Text('Your data is now backed up securely!'),
-            ],
-          ),
+          content: const Row(
+  children: [
+    Icon(Icons.check_circle, color: Colors.white, size: 18),
+    SizedBox(width: 8),
+    Expanded(                                       // ← takes remaining width
+      child: Text('Your data is now backed up securely!'),
+    ),
+  ],
+),
           backgroundColor: AppTheme.successColor,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -87,7 +91,6 @@ class _BackupScreenState extends State<BackupScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Hero illustration
                   Center(
                     child: Container(
                       width: 88,
@@ -113,7 +116,7 @@ class _BackupScreenState extends State<BackupScreen> {
                     'Your records, flocks, and finances are currently '
                     'stored only on this phone. If your phone is lost or '
                     'damaged, your data is gone.\n\n'
-                    'Link your phone number to back up automatically — '
+                    'Link your email to back up automatically — '
                     'no password needed.',
                     style: AppTheme.bodyMedium
                         .copyWith(color: AppTheme.textSecondary),
@@ -122,31 +125,32 @@ class _BackupScreenState extends State<BackupScreen> {
                   const SizedBox(height: AppTheme.spacingXL),
 
                   if (!_otpSent) ...[
-                    // ── Phone input ──────────────────────────────────────────
-                    Text('Your phone number',
+                    Text('Your email address',
                         style: AppTheme.bodyLarge
                             .copyWith(fontWeight: FontWeight.w600)),
                     const SizedBox(height: AppTheme.spacingSM),
                     TextFormField(
-                      controller: _phoneController,
-                      keyboardType: TextInputType.phone,
-                      decoration: AppTheme.inputDecoration('e.g. +2348012345678')
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      autocorrect: false,
+                      decoration: AppTheme.inputDecoration(
+                              'e.g. yourname@gmail.com')
                           .copyWith(
-                        prefixIcon: const Icon(Icons.phone_outlined),
+                        prefixIcon: const Icon(Icons.email_outlined),
                       ),
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) {
-                          return 'Enter your phone number';
+                          return 'Enter your email address';
                         }
-                        if (!v.trim().startsWith('+')) {
-                          return 'Include country code, e.g. +234 for Nigeria';
+                        if (!v.trim().contains('@') ||
+                            !v.trim().contains('.')) {
+                          return 'Enter a valid email address';
                         }
                         return null;
                       },
                     ),
                     const SizedBox(height: AppTheme.spacingLG),
-                    if (auth.error != null)
-                      _ErrorBanner(auth.error!),
+                    if (auth.error != null) _ErrorBanner(auth.error!),
                     const SizedBox(height: AppTheme.spacingSM),
                     SizedBox(
                       width: double.infinity,
@@ -166,7 +170,6 @@ class _BackupScreenState extends State<BackupScreen> {
                       ),
                     ),
                   ] else ...[
-                    // ── OTP input ────────────────────────────────────────────
                     Row(
                       children: [
                         Icon(Icons.check_circle,
@@ -174,7 +177,7 @@ class _BackupScreenState extends State<BackupScreen> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            'Code sent to ${auth.pendingPhone}',
+                            'Code sent to ${auth.pendingEmail}',
                             style: AppTheme.bodyMedium.copyWith(
                               color: AppTheme.successColor,
                               fontWeight: FontWeight.w600,
@@ -199,14 +202,13 @@ class _BackupScreenState extends State<BackupScreen> {
                       ),
                       validator: (v) {
                         if (v == null || v.trim().length != 6) {
-                          return 'Enter the 6-digit code from your SMS';
+                          return 'Enter the 6-digit code from your email';
                         }
                         return null;
                       },
                     ),
                     const SizedBox(height: AppTheme.spacingMD),
-                    if (auth.error != null)
-                      _ErrorBanner(auth.error!),
+                    if (auth.error != null) _ErrorBanner(auth.error!),
                     const SizedBox(height: AppTheme.spacingSM),
                     SizedBox(
                       width: double.infinity,
@@ -235,7 +237,7 @@ class _BackupScreenState extends State<BackupScreen> {
                                   _otpController.clear();
                                 }),
                         child: Text(
-                          'Wrong number? Go back',
+                          'Wrong email? Go back',
                           style: AppTheme.bodyMedium.copyWith(
                             color: AppTheme.textSecondary,
                           ),
@@ -245,11 +247,11 @@ class _BackupScreenState extends State<BackupScreen> {
                   ],
 
                   const SizedBox(height: AppTheme.spacingXL),
-                  // Privacy reassurance
                   Container(
                     padding: const EdgeInsets.all(AppTheme.spacingMD),
                     decoration: BoxDecoration(
-                      color: AppTheme.secondaryColor.withValues(alpha: 0.08),
+                      color:
+                          AppTheme.secondaryColor.withValues(alpha: 0.08),
                       borderRadius:
                           BorderRadius.circular(AppTheme.radiusMD),
                     ),
@@ -261,7 +263,7 @@ class _BackupScreenState extends State<BackupScreen> {
                         const SizedBox(width: AppTheme.spacingSM),
                         Expanded(
                           child: Text(
-                            'Your phone number is only used to protect your '
+                            'Your email is only used to protect your '
                             'account. We never share it or send marketing messages.',
                             style: AppTheme.bodySmall.copyWith(
                               color: AppTheme.secondaryColor,
@@ -299,15 +301,13 @@ class _ErrorBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline,
-              size: 16, color: AppTheme.errorColor),
+          Icon(Icons.error_outline, size: 16, color: AppTheme.errorColor),
           const SizedBox(width: AppTheme.spacingSM),
           Expanded(
             child: Text(
               message,
-              style: AppTheme.bodySmall.copyWith(
-                color: AppTheme.errorColor,
-              ),
+              style:
+                  AppTheme.bodySmall.copyWith(color: AppTheme.errorColor),
             ),
           ),
         ],

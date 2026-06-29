@@ -5,9 +5,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 ///
 /// Flow:
 ///   1. App launches → [signInAnonymously] called automatically
-///   2. User taps "Secure my backup" → [sendPhoneOtp] called
-///   3. User enters 6-digit code   → [verifyPhoneOtp] called
-///   4. Anonymous account is upgraded to a phone-linked account
+///   2. User taps "Secure my backup" → [sendEmailOtp] called
+///   3. User enters 6-digit code     → [verifyEmailOtp] called
+///   4. Anonymous account is upgraded to an email-linked account
 ///      (same user id, data is preserved)
 class SupabaseAuthService {
   SupabaseClient get _client => Supabase.instance.client;
@@ -17,8 +17,7 @@ class SupabaseAuthService {
   User? get currentUser => _client.auth.currentUser;
   String? get currentUserId => currentUser?.id;
   bool get isAuthenticated => currentUser != null;
-  bool get isAnonymous =>
-      currentUser?.isAnonymous ?? true;
+  bool get isAnonymous => currentUser?.isAnonymous ?? true;
 
   // ─── Anonymous sign-in ─────────────────────────────────────────────────────
 
@@ -29,37 +28,39 @@ class SupabaseAuthService {
     if (isAuthenticated) return;
     try {
       await _client.auth.signInAnonymously();
-      debugPrint('Auth: signed in anonymously as ${currentUserId}');
+      debugPrint('Auth: signed in anonymously as $currentUserId');
     } catch (e) {
       debugPrint('Auth: anonymous sign-in failed: $e');
       rethrow;
     }
   }
 
-  // ─── Phone OTP upgrade ─────────────────────────────────────────────────────
+  // ─── Email OTP upgrade ─────────────────────────────────────────────────────
 
-  /// Sends a 6-digit OTP to [phone].
-  /// Phone must be in E.164 format — e.g. +2348012345678
-  Future<void> sendPhoneOtp(String phone) async {
+  /// Sends a 6-digit OTP to [email].
+  Future<void> sendEmailOtp(String email) async {
     try {
-      await _client.auth.signInWithOtp(phone: phone);
-      debugPrint('Auth: OTP sent to $phone');
+      await _client.auth.signInWithOtp(
+        email: email,
+        shouldCreateUser: true,
+      );
+      debugPrint('Auth: OTP sent to $email');
     } catch (e) {
       debugPrint('Auth: OTP send failed: $e');
       rethrow;
     }
   }
 
-  /// Verifies the OTP and links the phone number to the anonymous account.
+  /// Verifies the OTP and links the email to the anonymous account.
   /// The user ID stays the same — all existing data is preserved.
-  Future<void> verifyPhoneOtp(String phone, String token) async {
+  Future<void> verifyEmailOtp(String email, String token) async {
     try {
       await _client.auth.verifyOTP(
-        phone: phone,
+        email: email,
         token: token,
-        type: OtpType.sms,
+        type: OtpType.email,
       );
-      debugPrint('Auth: phone verified for ${currentUserId}');
+      debugPrint('Auth: email verified for $currentUserId');
     } catch (e) {
       debugPrint('Auth: OTP verification failed: $e');
       rethrow;

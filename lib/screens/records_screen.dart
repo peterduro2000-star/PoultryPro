@@ -78,7 +78,7 @@ void dispose() {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.home, size: 48, color: AppTheme.primaryColor.withOpacity(0.4)),
+          Icon(Icons.home, size: 48, color: AppTheme.primaryColor.withValues(alpha: 102)),
           const SizedBox(height: AppTheme.spacingMD),
           Text('No flock selected', style: AppTheme.headingSmall),
           const SizedBox(height: AppTheme.spacingSM),
@@ -104,7 +104,7 @@ void dispose() {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.edit_note, size: 80, color: AppTheme.primaryColor.withOpacity(0.3)),
+                Icon(Icons.edit_note, size: 80, color: AppTheme.primaryColor.withValues(alpha: 77)),
                 const SizedBox(height: AppTheme.spacingMD),
                 Text('No records yet', style: AppTheme.headingSmall),
                 const SizedBox(height: AppTheme.spacingSM),
@@ -198,7 +198,7 @@ class _SummaryChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingSM, horizontal: AppTheme.spacingSM),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 26),
         borderRadius: BorderRadius.circular(AppTheme.radiusSM),
       ),
       child: Column(
@@ -238,7 +238,7 @@ class _RecordCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Icon(Icons.calendar_today, size: 16, color: AppTheme.textSecondary),
+                      const Icon(Icons.calendar_today, size: 16, color: AppTheme.textSecondary),
             ],
           ),
           const Divider(height: AppTheme.spacingLG),
@@ -272,7 +272,7 @@ class _RecordCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.health_and_safety, size: 16, color: AppTheme.warningColor),
+                const Icon(Icons.health_and_safety, size: 16, color: AppTheme.warningColor),
                 const SizedBox(width: 4),
                 Flexible(
                   child: Text(
@@ -290,7 +290,7 @@ class _RecordCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.notes, size: 16, color: AppTheme.textSecondary),
+                const Icon(Icons.notes, size: 16, color: AppTheme.textSecondary),
                 const SizedBox(width: 4),
                 Flexible(
                   child: Text(
@@ -371,9 +371,9 @@ class _AddRecordSheetState extends State<_AddRecordSheet> {
     super.dispose();
   }
 
-  Future<bool> _checkDateExists() async {
+  bool _checkDateExists(DailyRecordProvider dailyRecordProvider) {
     final dateStr = _selectedDate.toIso8601String().split('T').first;
-    final records = context.read<DailyRecordProvider>().records;
+    final records = dailyRecordProvider.records;
     return records.any((r) => r.date == dateStr);
   }
 
@@ -383,8 +383,13 @@ class _AddRecordSheetState extends State<_AddRecordSheet> {
     setState(() => _isSaving = true);
 
     final dateStr = _selectedDate.toIso8601String().split('T').first;
+    final flockProvider = context.read<FlockProvider>();
+    final dailyRecordProvider = context.read<DailyRecordProvider>();
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
 
-    _dateAlreadyExists = await _checkDateExists();
+    _dateAlreadyExists = _checkDateExists(dailyRecordProvider);
+    if (!mounted) return;
     if (_dateAlreadyExists) {
       final shouldOverwrite = await showDialog<bool>(
         context: context,
@@ -411,25 +416,25 @@ class _AddRecordSheetState extends State<_AddRecordSheet> {
     }
 
     final mortality = int.tryParse(_mortalityController.text.trim()) ?? 0;
-final flock = context.read<FlockProvider>().selectedFlock;
-final currentBirds = flock?.birdCount ?? 0;
+    final flock = flockProvider.selectedFlock;
+    final currentBirds = flock?.birdCount ?? 0;
 
-if (mortality > currentBirds) {
-  setState(() => _isSaving = false);
-  if (mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-            'Cannot record $mortality deaths — only $currentBirds birds alive'),
-        backgroundColor: AppTheme.errorColor,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-  return;
-}
+    if (mortality > currentBirds) {
+      setState(() => _isSaving = false);
+      if (mounted) {
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text(
+                'Cannot record $mortality deaths — only $currentBirds birds alive'),
+            backgroundColor: AppTheme.errorColor,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
 
-await context.read<DailyRecordProvider>().addRecord(
+    await dailyRecordProvider.addRecord(
           flockId: widget.flockId,
           date: dateStr,
           eggsCollected: int.tryParse(_eggsController.text.trim()) ?? 0,
@@ -440,18 +445,14 @@ await context.read<DailyRecordProvider>().addRecord(
           notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
         );
 
-    if (mortality > 0) {
-      final flockProvider = context.read<FlockProvider>();
-      final flock = flockProvider.selectedFlock;
-      if (flock != null) {
-        final newCount = (flock.birdCount - mortality).clamp(0, flock.birdCount);
-        await flockProvider.updateFlock(flock.copyWith(birdCount: newCount));
-      }
+    if (mortality > 0 && flock != null) {
+      final newCount = (flock.birdCount - mortality).clamp(0, flock.birdCount);
+      await flockProvider.updateFlock(flock.copyWith(birdCount: newCount));
     }
 
     if (mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      navigator.pop();
+      scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text(_dateAlreadyExists
               ? 'Daily record updated for $dateStr!'
@@ -501,23 +502,28 @@ await context.read<DailyRecordProvider>().addRecord(
 
               GestureDetector(
                 onTap: () async {
+                  final records = context.read<DailyRecordProvider>().records;
+                  final messenger = ScaffoldMessenger.of(context);
                   final picked = await showDatePicker(
                     context: context,
                     initialDate: _selectedDate,
                     firstDate: DateTime(2020),
                     lastDate: DateTime.now(),
                   );
-                  if (picked != null) {
-                    setState(() => _selectedDate = picked);
-                    final exists = await _checkDateExists();
-                    if (exists) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Record already exists for ${DateFormatter.format(picked.toIso8601String().split('T').first)} — will overwrite if saved.'),
-                          backgroundColor: AppTheme.warningColor,
+                  if (!mounted || picked == null) return;
+                  setState(() => _selectedDate = picked);
+                  final dateStr = picked.toIso8601String().split('T').first;
+                  final exists = records.any((r) => r.date == dateStr);
+                  if (!mounted) return;
+                  if (exists) {
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Record already exists for ${DateFormatter.format(dateStr)} — will overwrite if saved.',
                         ),
-                      );
-                    }
+                        backgroundColor: AppTheme.warningColor,
+                      ),
+                    );
                   }
                 },
                 child: Container(
@@ -528,7 +534,7 @@ await context.read<DailyRecordProvider>().addRecord(
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.calendar_today, color: AppTheme.primaryColor),
+                      const Icon(Icons.calendar_today, color: AppTheme.primaryColor),
                       const SizedBox(width: AppTheme.spacingSM),
                       Text(
                         DateFormatter.format(_selectedDate.toIso8601String().split('T').first),

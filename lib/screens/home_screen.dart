@@ -1,16 +1,21 @@
-// lib/screens/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../theme/app_theme.dart';
-import '../providers/flock_provider.dart';
-import '../providers/daily_record_provider.dart';
-import '../providers/finance_provider.dart'; // Added import
-import '../models/flock.dart';
-import '../models/daily_record.dart';
-import '../utils/date_formatter.dart';
-import '../utils/currency_formatter.dart';
 
-// Top-level helper function (visible everywhere in this file)
+import '../models/daily_record.dart';
+import '../models/flock.dart';
+import '../providers/daily_record_provider.dart';
+import '../providers/finance_provider.dart';
+import '../providers/flock_provider.dart';
+import '../providers/license_provider.dart';
+import '../screens/batch_comparison_screen.dart';
+import '../screens/flock_workspace_screen.dart';
+import '../screens/upgrade_screen.dart';
+import '../theme/app_theme.dart';
+import '../utils/currency_formatter.dart';
+import '../utils/date_formatter.dart';
+import '../widgets/dashboard_summary_card.dart';
+import '../widgets/farm_performance_card.dart';
+
 Color _getStageColor(String stage) {
   switch (stage.toLowerCase()) {
     case 'brooding':
@@ -32,8 +37,6 @@ Color _getStageColor(String stage) {
   }
 }
 
-
-
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -47,27 +50,28 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadData();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
   }
 
-  void _loadData() {
-    context.read<FlockProvider>().loadFlocks().then((_) {
-      if (mounted) {
-        setState(() => _initialLoadComplete = true);
-        context.read<FinanceProvider>().loadFarmFinanceData();
-        final flocks = context.read<FlockProvider>().flocks;
-        if (flocks.isNotEmpty) {
-          final recordProvider = context.read<DailyRecordProvider>();
-          final flockIds = flocks.map((f) => f.id).toList();
-          recordProvider.loadLatestRecords(flockIds);
-          recordProvider.loadMortalityTotals(flockIds);
-        }
+  Future<void> _loadData() async {
+    final flockProvider = context.read<FlockProvider>();
+    final financeProvider = context.read<FinanceProvider>();
+    final recordProvider = context.read<DailyRecordProvider>();
+
+    try {
+      await flockProvider.loadFlocks();
+      if (!mounted) return;
+      setState(() => _initialLoadComplete = true);
+      await financeProvider.loadFarmFinanceData();
+      final flocks = flockProvider.flocks;
+      if (flocks.isNotEmpty) {
+        final flockIds = flocks.map((f) => f.id).toList();
+        await recordProvider.loadLatestRecords(flockIds);
+        await recordProvider.loadMortalityTotals(flockIds);
       }
-    }).catchError((e) {
+    } catch (e) {
       if (mounted) setState(() => _initialLoadComplete = true);
-    });
+    }
   }
 
   @override
@@ -80,21 +84,23 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Consumer<FlockProvider>(
         builder: (context, flockProvider, _) {
-          // Show loading only during initial app load
           if (!_initialLoadComplete && flockProvider.isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          // Error state when flocks failed to load
-          if (flockProvider.error != null && flockProvider.flocks.isEmpty) {
+          if (flockProvider.error != null &&
+              flockProvider.flocks.isEmpty) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.error_outline,
-                      size: 64, color: AppTheme.errorColor.withOpacity(0.5)),
+                      size: 64,
+                      color: AppTheme.errorColor
+                          .withValues(alpha: 0.5)),
                   const SizedBox(height: AppTheme.spacingMD),
-                  Text('Failed to load flocks', style: AppTheme.headingMedium),
+                  Text('Failed to load flocks',
+                      style: AppTheme.headingMedium),
                   const SizedBox(height: AppTheme.spacingSM),
                   Text(flockProvider.error!,
                       style: AppTheme.bodyMedium
@@ -112,77 +118,91 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           }
 
-          // Empty state: no flocks yet
           if (flockProvider.flocks.isEmpty) {
             return _buildEmptyState(context);
           }
 
-          // Main content with refresh
           return RefreshIndicator(
             onRefresh: () async {
               final flockProvider = context.read<FlockProvider>();
               final financeProvider = context.read<FinanceProvider>();
               final recordProvider = context.read<DailyRecordProvider>();
-
               await flockProvider.loadFlocks();
               await financeProvider.loadFarmFinanceData();
               final flocks = flockProvider.flocks;
               if (flocks.isNotEmpty) {
-                final flockIds = flocks.map((f) => f.id).toList();
-                await recordProvider.loadLatestRecords(flockIds);
-                await recordProvider.loadMortalityTotals(flockIds);
+                final ids = flocks.map((f) => f.id).toList();
+                await recordProvider.loadLatestRecords(ids);
+                await recordProvider.loadMortalityTotals(ids);
               }
             },
             child: Consumer<DailyRecordProvider>(
               builder: (context, recordProvider, _) {
+                final isPro = context.read<LicenseProvider>().isPro;
                 return ListView(
-                  padding: const EdgeInsets.all(AppTheme.spacingMD),
+                  padding:
+                      const EdgeInsets.all(AppTheme.spacingMD),
                   children: [
                     // Selected flock banner
                     if (flockProvider.selectedFlock != null)
-                      _SelectedFlockBanner(flock: flockProvider.selectedFlock!),
+                      _SelectedFlockBanner(
+                          flock: flockProvider.selectedFlock!),
                     if (flockProvider.selectedFlock != null)
                       const SizedBox(height: AppTheme.spacingMD),
 
-                    // ── NEW: Vaccination Reminders Banner ─────────────────────────────
+                    // Vaccination banner
                     if (flockProvider.selectedFlock != null &&
-                        flockProvider.selectedFlock!.nextVaccination != null)
-                      _VaccinationBanner(flock: flockProvider.selectedFlock!),
+                        flockProvider.selectedFlock!
+                                .nextVaccination !=
+                            null)
+                      _VaccinationBanner(
+                          flock: flockProvider.selectedFlock!),
 
-                    // Farm-wide business performance
-                    Consumer<FinanceProvider>(
-                      builder: (context, financeProvider, _) =>
-                          _buildFarmPerformanceCard(financeProvider),
-                    ),
+                    // Farm performance card
+                    const FarmPerformanceCard(),
                     const SizedBox(height: AppTheme.spacingLG),
 
-                    // Dashboard summary
-                    _buildDashboardSummary(flockProvider),
+                    // Dashboard summary + compare button
+                    DashboardSummaryCard(
+                      onCompareTap: isPro && flockProvider.flocks.length >= 2
+                          ? () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const BatchComparisonScreen(),
+                                ),
+                              )
+                          : null,
+                    ),
                     const SizedBox(height: AppTheme.spacingLG),
 
                     // Flocks header
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Your Flocks', style: AppTheme.headingSmall),
-                        Text('Tap to select',
-                            style: AppTheme.bodySmall
-                                .copyWith(color: AppTheme.textSecondary)),
+                        Text('Your Flocks',
+                            style: AppTheme.headingSmall),
+                        Text('Tap a flockto open',
+                            style: AppTheme.bodySmall.copyWith(
+                                color: AppTheme.textSecondary)),
                       ],
                     ),
                     const SizedBox(height: AppTheme.spacingMD),
 
                     // Flock grid
                     Consumer<FinanceProvider>(
-                      builder: (context, financeProvider, _) => _buildFlockGrid(
+                      builder: (context, financeProvider, _) =>
+                          _buildFlockGrid(
                         flockProvider,
                         recordProvider.latestRecords,
                         financeProvider,
+                        recordProvider,
                       ),
                     ),
                     const SizedBox(height: AppTheme.spacingLG),
 
-                    // Today's Summary
+                    // Today's summary
                     _buildTodaySummary(recordProvider),
                   ],
                 );
@@ -195,7 +215,17 @@ class _HomeScreenState extends State<HomeScreen> {
         heroTag: 'home_fab',
         backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
-        onPressed: () => _showCreateFlockDialog(context),
+        onPressed: () async {
+          final flockProvider = context.read<FlockProvider>();
+          final isPro = context.read<LicenseProvider>().isPro;
+
+          if (!isPro && flockProvider.flocks.length >= 1) {
+            _showProFlockGate(context);
+            return;
+          }
+
+          _showCreateFlockDialog(context);
+        },
         child: const Icon(Icons.add),
       ),
     );
@@ -207,7 +237,8 @@ class _HomeScreenState extends State<HomeScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.pets,
-              size: 80, color: AppTheme.primaryColor.withOpacity(0.3)),
+              size: 80,
+              color: AppTheme.primaryColor.withValues(alpha: 0.3)),
           const SizedBox(height: AppTheme.spacingMD),
           Text('No Flocks Yet', style: AppTheme.headingMedium),
           const SizedBox(height: AppTheme.spacingSM),
@@ -225,162 +256,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDashboardSummary(FlockProvider flockProvider) {
-    return Container(
-      decoration: AppTheme.cardDecoration,
-      padding: const EdgeInsets.all(AppTheme.spacingMD),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Overview', style: AppTheme.headingSmall),
-          const SizedBox(height: AppTheme.spacingMD),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildSummaryCard(
-                  Icons.groups,
-                  'Active Flocks',
-                  flockProvider.activeFlockCount.toString(),
-                  AppTheme.primaryColor),
-              _buildSummaryCard(Icons.egg_alt, 'Total Birds',
-                  flockProvider.totalBirds.toString(), AppTheme.secondaryColor),
-              _buildSummaryCard(
-                  Icons.savings,
-                  'Total Cost',
-                  CurrencyFormatter.formatCompact(flockProvider.totalInitialCost),
-                  AppTheme.primaryColor),
-            ],
-          ),
-          // batch comparison button removed
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFarmPerformanceCard(FinanceProvider financeProvider) {
-    final hasData = financeProvider.farmExpenses.isNotEmpty ||
-        financeProvider.farmSales.isNotEmpty;
-
-    return Container(
-      decoration: AppTheme.cardDecoration,
-      padding: const EdgeInsets.all(AppTheme.spacingMD),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Farm Performance', style: AppTheme.headingSmall),
-          const SizedBox(height: AppTheme.spacingMD),
-          if (financeProvider.isFarmFinanceLoading)
-            const Center(child: CircularProgressIndicator())
-          else if (!hasData)
-            Center(
-              child: Text(
-                'No financial data yet',
-                style:
-                    AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
-              ),
-            )
-          else
-            Wrap(
-              spacing: AppTheme.spacingMD,
-              runSpacing: AppTheme.spacingMD,
-              alignment: WrapAlignment.spaceBetween,
-              children: [
-                _buildFarmMetricItem(
-                  Icons.trending_up,
-                  'Total Sales',
-                  CurrencyFormatter.formatCompact(financeProvider.farmTotalSales),
-                  AppTheme.successColor,
-                ),
-                _buildFarmMetricItem(
-                  Icons.receipt_long,
-                  'Total Expenses',
-                  CurrencyFormatter.formatCompact(financeProvider.farmTotalExpenses),
-                  AppTheme.errorColor,
-                ),
-                _buildFarmMetricItem(
-                  financeProvider.farmProfit >= 0
-                      ? Icons.account_balance_wallet
-                      : Icons.warning_amber,
-                  'Profit',
-                  financeProvider.farmProfitDisplay,
-                  financeProvider.farmProfit >= 0
-                      ? AppTheme.successColor
-                      : AppTheme.errorColor,
-                ),
-                _buildFarmMetricItem(
-                  Icons.percent,
-                  'Profit Margin',
-                  financeProvider.farmProfitMarginDisplay,
-                  AppTheme.primaryColor,
-                ),
-                _buildFarmMetricItem(
-                  Icons.paid,
-                  'Cost Recovered',
-                  '${financeProvider.farmRecoveryPercentage.toStringAsFixed(1)}%',
-                  AppTheme.secondaryColor,
-                ),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryCard(
-      IconData icon, String label, String value, Color color) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(AppTheme.spacingSM),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(AppTheme.radiusSM),
-          ),
-          child: Icon(icon, color: color, size: 24),
-        ),
-        const SizedBox(height: AppTheme.spacingSM),
-        Text(value, style: AppTheme.headingSmall.copyWith(color: color)),
-        Text(label, style: AppTheme.bodySmall),
-      ],
-    );
-  }
-
-  Widget _buildFarmMetricItem(
-      IconData icon, String label, String value, Color color) {
-    return SizedBox(
-      width: 96,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(AppTheme.spacingSM),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(AppTheme.radiusSM),
-            ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(height: AppTheme.spacingSM),
-          Text(
-            value,
-            style: AppTheme.bodyLarge
-                .copyWith(color: color, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-          ),
-          Text(
-            label,
-            style: AppTheme.bodySmall,
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildFlockGrid(
     FlockProvider flockProvider,
     Map<String, DailyRecord?> latestRecords,
     FinanceProvider financeProvider,
+    DailyRecordProvider recordProvider,
   ) {
     final flocks = flockProvider.flocks;
     return GridView.builder(
@@ -396,8 +276,10 @@ class _HomeScreenState extends State<HomeScreen> {
       itemBuilder: (context, index) {
         final flock = flocks[index];
         final latest = latestRecords[flock.id];
-        final isSelected = flockProvider.selectedFlock?.id == flock.id;
-        final breakEvenPerBird = financeProvider.breakEvenPerBirdForFlock(
+        final isSelected =
+            flockProvider.selectedFlock?.id == flock.id;
+        final breakEvenPerBird =
+            financeProvider.breakEvenPerBirdForFlock(
           flockId: flock.id,
           currentBirds: flock.birdCount,
         );
@@ -407,21 +289,21 @@ class _HomeScreenState extends State<HomeScreen> {
           flock: flock,
           latestRecord: latest,
           isSelected: isSelected,
-          mortalityTotal:
-              context.read<DailyRecordProvider>().mortalityTotalFor(flock.id),
+          mortalityTotal: recordProvider.mortalityTotalFor(flock.id),
           breakEvenPerBird: breakEvenPerBird,
-          breakEvenDisplay: financeProvider.breakEvenPerBirdForFlockDisplay(
+          breakEvenDisplay:
+              financeProvider.breakEvenPerBirdForFlockDisplay(
             flockId: flock.id,
             currentBirds: flock.birdCount,
           ),
           recoveryPercentage: recoveryPercentage,
           onTap: () {
-            context.read<FlockProvider>().selectFlock(flock);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('${flock.name} selected'),
-                duration: const Duration(seconds: 1),
-                backgroundColor: AppTheme.primaryColor,
+            flockProvider.selectFlock(flock);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    FlockWorkspaceScreen(flock: flock),
               ),
             );
           },
@@ -433,18 +315,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTodaySummary(DailyRecordProvider recordProvider) {
-    final records =
-        recordProvider.latestRecords.values.whereType<DailyRecord>().toList();
-
+    final records = recordProvider.latestRecords.values
+        .whereType<DailyRecord>()
+        .toList();
     final totalEggs =
-        records.fold<int>(0, (sum, r) => sum + (r.eggsCollected ?? 0));
+        records.fold<int>(0, (s, r) => s + (r.eggsCollected ?? 0));
     final totalDeaths =
-        records.fold<int>(0, (sum, r) => sum + (r.mortalityCount ?? 0));
+        records.fold<int>(0, (s, r) => s + (r.mortalityCount ?? 0));
     final totalFeed =
-        records.fold<double>(0, (sum, r) => sum + (r.feedGiven ?? 0));
+        records.fold<double>(0, (s, r) => s + (r.feedGiven ?? 0));
     final totalWater =
-        records.fold<double>(0, (sum, r) => sum + (r.waterGiven ?? 0));
-
+        records.fold<double>(0, (s, r) => s + (r.waterGiven ?? 0));
     final hasData = records.isNotEmpty;
 
     return Container(
@@ -456,11 +337,12 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("Today's Summary", style: AppTheme.headingSmall),
+              Text("Today's Summary",
+                  style: AppTheme.headingSmall),
               Text(
                 hasData ? 'All flocks' : 'No records yet',
-                style:
-                    AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
+                style: AppTheme.bodySmall
+                    .copyWith(color: AppTheme.textSecondary),
               ),
             ],
           ),
@@ -468,9 +350,9 @@ class _HomeScreenState extends State<HomeScreen> {
           if (!hasData)
             Center(
               child: Text(
-                'Add today\'s records to see summary',
-                style:
-                    AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
+                "Add today's records to see summary",
+                style: AppTheme.bodySmall
+                    .copyWith(color: AppTheme.textSecondary),
                 textAlign: TextAlign.center,
               ),
             )
@@ -510,10 +392,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-
+  // removed unused helper: _formatNumber
 
   Widget _buildAgePreview(DateTime stockDate, int ageAtStocking) {
-    final daysSinceStocking = DateTime.now().difference(stockDate).inDays;
+    final daysSinceStocking =
+        DateTime.now().difference(stockDate).inDays;
     final currentAge = ageAtStocking + daysSinceStocking;
     final weeks = currentAge ~/ 7;
     String ageText;
@@ -522,15 +405,18 @@ class _HomeScreenState extends State<HomeScreen> {
     } else if (currentAge < 7) {
       ageText = 'Currently $currentAge days old';
     } else {
-      ageText = 'Currently $weeks weeks old ($currentAge days)';
+      ageText =
+          'Currently $weeks weeks old ($currentAge days)';
     }
     return Row(
       children: [
-        Icon(Icons.info_outline, size: 14, color: AppTheme.successColor),
+        const Icon(Icons.info_outline,
+          size: 14, color: AppTheme.successColor),
         const SizedBox(width: 4),
         Expanded(
           child: Text(ageText,
-              style: AppTheme.bodySmall.copyWith(color: AppTheme.successColor)),
+              style: AppTheme.bodySmall
+                  .copyWith(color: AppTheme.successColor)),
         ),
       ],
     );
@@ -542,13 +428,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final costPerBirdController = TextEditingController();
     final sourceController = TextEditingController();
     final notesController = TextEditingController();
-    final ageAtStockingController = TextEditingController(text: '0');
+    final ageAtStockingController =
+        TextEditingController(text: '0');
 
     String selectedType = 'Broilers';
     String? selectedBreed;
     String? selectedHousingType;
     DateTime? selectedDate;
-    bool showOptionalFields = false;
+    // expansion state not otherwise observed; no local tracking needed
 
     String? nameError;
     String? birdCountError;
@@ -588,14 +475,15 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, setSheetState) => Container(
           decoration: const BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius:
+                BorderRadius.vertical(top: Radius.circular(20)),
           ),
           padding: EdgeInsets.only(
             left: AppTheme.spacingMD,
             right: AppTheme.spacingMD,
             top: AppTheme.spacingMD,
-            bottom:
-                MediaQuery.of(context).viewInsets.bottom + AppTheme.spacingMD,
+            bottom: MediaQuery.of(context).viewInsets.bottom +
+                AppTheme.spacingMD,
           ),
           child: SingleChildScrollView(
             child: Column(
@@ -612,7 +500,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 const SizedBox(height: AppTheme.spacingMD),
-                Text('Create New Flock', style: AppTheme.headingSmall),
+                Text('Create New Flock',
+                    style: AppTheme.headingSmall),
                 const SizedBox(height: AppTheme.spacingSM),
                 Text('Stock details for your birds',
                     style: AppTheme.bodySmall
@@ -620,26 +509,32 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: AppTheme.spacingLG),
                 TextField(
                   controller: nameController,
-                  decoration: AppTheme.inputDecoration('Flock Name *').copyWith(
+                  decoration: AppTheme.inputDecoration(
+                          'Flock Name *')
+                      .copyWith(
                     errorText: nameError,
-                    hintText: 'e.g., Broiler Batch 1, Layer House A',
+                    hintText:
+                        'e.g., Broiler Batch 1, Layer House A',
                   ),
                 ),
                 const SizedBox(height: AppTheme.spacingMD),
                 DropdownButtonFormField<String>(
-                  value: selectedType,
-                  decoration: AppTheme.inputDecoration('Type of Birds *'),
+                  initialValue: selectedType,
+                  decoration:
+                      AppTheme.inputDecoration('Type of Birds *'),
                   items: typeOptions
-                      .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                      .map((t) => DropdownMenuItem(
+                          value: t, child: Text(t)))
                       .toList(),
-                  onChanged: (v) =>
-                      setSheetState(() => selectedType = v ?? 'Broilers'),
+                  onChanged: (v) => setSheetState(
+                      () => selectedType = v ?? 'Broilers'),
                 ),
                 const SizedBox(height: AppTheme.spacingMD),
                 TextField(
                   controller: birdCountController,
-                  decoration:
-                      AppTheme.inputDecoration('Number of Birds *').copyWith(
+                  decoration: AppTheme.inputDecoration(
+                          'Number of Birds *')
+                      .copyWith(
                     errorText: birdCountError,
                     hintText: '100, 500, 1000, etc.',
                   ),
@@ -648,13 +543,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: AppTheme.spacingMD),
                 TextField(
                   controller: costPerBirdController,
-                  decoration:
-                      AppTheme.inputDecoration('Cost per Bird (₦) *').copyWith(
+                  decoration: AppTheme.inputDecoration(
+                          'Cost per Bird (₦) *')
+                      .copyWith(
                     errorText: costPerBirdError,
                     hintText: '800, 1500, 3000, etc.',
                   ),
                   keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                      const TextInputType.numberWithOptions(
+                          decimal: true),
                 ),
                 const SizedBox(height: AppTheme.spacingMD),
                 Container(
@@ -662,23 +559,26 @@ class _HomeScreenState extends State<HomeScreen> {
                     border: Border.all(
                       color: dateError != null
                           ? AppTheme.errorColor
-                          : AppTheme.textSecondary.withOpacity(0.3),
+                          : AppTheme.textSecondary
+                              .withValues(alpha: 0.3),
                       width: dateError != null ? 2 : 1,
                     ),
-                    borderRadius: BorderRadius.circular(AppTheme.radiusSM),
+                    borderRadius:
+                        BorderRadius.circular(AppTheme.radiusSM),
                   ),
-                  padding: const EdgeInsets.all(AppTheme.spacingMD),
+                  padding:
+                      const EdgeInsets.all(AppTheme.spacingMD),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('Stocking Details *',
-                          style: AppTheme.bodySmall
-                              .copyWith(fontWeight: FontWeight.w600)),
+                          style: AppTheme.bodySmall.copyWith(
+                              fontWeight: FontWeight.w600)),
                       const SizedBox(height: AppTheme.spacingSM),
                       Text(
                         'Age of birds when you got them + date you stocked',
-                        style: AppTheme.bodySmall
-                            .copyWith(color: AppTheme.textSecondary),
+                        style: AppTheme.bodySmall.copyWith(
+                            color: AppTheme.textSecondary),
                       ),
                       const SizedBox(height: AppTheme.spacingMD),
                       Row(
@@ -686,28 +586,34 @@ class _HomeScreenState extends State<HomeScreen> {
                           Expanded(
                             child: TextField(
                               controller: ageAtStockingController,
-                              decoration: AppTheme.inputDecoration(
-                                      'Age at stocking (days)')
-                                  .copyWith(
+                              decoration:
+                                  AppTheme.inputDecoration(
+                                          'Age at stocking (days)')
+                                      .copyWith(
                                 hintText: '0 = day-old chicks',
                               ),
                               keyboardType: TextInputType.number,
-                              onChanged: (_) => setSheetState(() {}),
+                              onChanged: (_) =>
+                                  setSheetState(() {}),
                             ),
                           ),
-                          const SizedBox(width: AppTheme.spacingMD),
+                          const SizedBox(
+                              width: AppTheme.spacingMD),
                           Expanded(
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   selectedDate == null
                                       ? 'Date stocked *'
-                                      : DateFormatter.format(selectedDate!
-                                          .toIso8601String()
-                                          .split('T')
-                                          .first),
-                                  style: AppTheme.bodySmall.copyWith(
+                                      : DateFormatter.format(
+                                          selectedDate!
+                                              .toIso8601String()
+                                              .split('T')
+                                              .first),
+                                  style: AppTheme.bodySmall
+                                      .copyWith(
                                     color: selectedDate == null
                                         ? AppTheme.textSecondary
                                         : Colors.black87,
@@ -717,13 +623,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(height: 4),
                                 TextButton.icon(
                                   onPressed: () async {
-                                    final picked = await showDatePicker(
+                                    final picked =
+                                        await showDatePicker(
                                       context: context,
                                       initialDate: DateTime.now(),
                                       firstDate: DateTime.now()
-                                          .subtract(const Duration(days: 365)),
-                                      lastDate: DateTime.now()
-                                          .add(const Duration(days: 30)),
+                                          .subtract(const Duration(
+                                              days: 365)),
+                                      lastDate: DateTime.now().add(
+                                          const Duration(days: 30)),
                                     );
                                     if (picked != null) {
                                       setSheetState(() {
@@ -732,11 +640,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                       });
                                     }
                                   },
-                                  icon: const Icon(Icons.calendar_today,
+                                  icon: const Icon(
+                                      Icons.calendar_today,
                                       size: 16),
                                   label: const Text('Pick date'),
                                   style: TextButton.styleFrom(
-                                    foregroundColor: AppTheme.primaryColor,
+                                    foregroundColor:
+                                        AppTheme.primaryColor,
                                     padding: EdgeInsets.zero,
                                   ),
                                 ),
@@ -749,68 +659,74 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(height: AppTheme.spacingSM),
                         _buildAgePreview(
                           selectedDate!,
-                          int.tryParse(ageAtStockingController.text) ?? 0,
+                          int.tryParse(
+                                  ageAtStockingController.text) ??
+                              0,
                         ),
                       ],
                       if (dateError != null) ...[
                         const SizedBox(height: AppTheme.spacingSM),
                         Text(dateError!,
-                            style: AppTheme.bodySmall
-                                .copyWith(color: AppTheme.errorColor)),
+                            style: AppTheme.bodySmall.copyWith(
+                                color: AppTheme.errorColor)),
                       ],
                     ],
                   ),
                 ),
                 const SizedBox(height: AppTheme.spacingLG),
                 ExpansionTile(
-                  title: const Text('Add more details (optional)'),
+                  title:
+                      const Text('Add more details (optional)'),
                   initiallyExpanded: false,
-                  onExpansionChanged: (expanded) =>
-                      setSheetState(() => showOptionalFields = expanded),
+                    onExpansionChanged: (expanded) =>
+                      setSheetState(() {}),
                   children: [
                     const SizedBox(height: AppTheme.spacingMD),
                     DropdownButtonFormField<String?>(
-                      value: selectedBreed,
-                      decoration: AppTheme.inputDecoration('Bird Breed'),
-                      items: [
+                      initialValue: selectedBreed,
+                      decoration:
+                          AppTheme.inputDecoration('Bird Breed'),
+                        items: [
                         const DropdownMenuItem(
-                            value: null, child: Text('Not specified')),
-                        ...breedOptions
-                            .map((b) =>
-                                DropdownMenuItem(value: b, child: Text(b)))
-                            .toList(),
-                      ],
-                      onChanged: (v) => setSheetState(() => selectedBreed = v),
+                          value: null,
+                          child: Text('Not specified')),
+                        ...breedOptions.map((b) => DropdownMenuItem(value: b, child: Text(b))),
+                        ],
+                      onChanged: (v) =>
+                          setSheetState(() => selectedBreed = v),
                     ),
                     const SizedBox(height: AppTheme.spacingMD),
                     TextField(
                       controller: sourceController,
-                      decoration:
-                          AppTheme.inputDecoration('Source of Chicks').copyWith(
-                        hintText: 'e.g., CHI Farms, Local market, Hatchery',
+                      decoration: AppTheme.inputDecoration(
+                              'Source of Chicks')
+                          .copyWith(
+                        hintText:
+                            'e.g., CHI Farms, Local market, Hatchery',
                       ),
                     ),
                     const SizedBox(height: AppTheme.spacingMD),
                     DropdownButtonFormField<String?>(
-                      value: selectedHousingType,
-                      decoration: AppTheme.inputDecoration('Housing System'),
-                      items: [
+                      initialValue: selectedHousingType,
+                      decoration: AppTheme.inputDecoration(
+                          'Housing System'),
+                        items: [
                         const DropdownMenuItem(
-                            value: null, child: Text('Not specified')),
-                        ...housingOptions
-                            .map((h) =>
-                                DropdownMenuItem(value: h, child: Text(h)))
-                            .toList(),
-                      ],
-                      onChanged: (v) =>
-                          setSheetState(() => selectedHousingType = v),
+                          value: null,
+                          child: Text('Not specified')),
+                        ...housingOptions.map((h) => DropdownMenuItem(value: h, child: Text(h))),
+                        ],
+                      onChanged: (v) => setSheetState(
+                          () => selectedHousingType = v),
                     ),
                     const SizedBox(height: AppTheme.spacingMD),
                     TextField(
                       controller: notesController,
-                      decoration:
-                          AppTheme.inputDecoration('Notes / Comments').copyWith(
-                        hintText: 'Any other details about this flock',
+                      decoration: AppTheme.inputDecoration(
+                              'Notes / Comments')
+                          .copyWith(
+                        hintText:
+                            'Any other details about this flock',
                       ),
                       maxLines: 3,
                     ),
@@ -833,107 +749,123 @@ class _HomeScreenState extends State<HomeScreen> {
                       bool hasError = false;
 
                       if (nameController.text.trim().isEmpty) {
-                        setSheetState(
-                            () => nameError = 'Flock name is required');
+                        setSheetState(() =>
+                            nameError = 'Flock name is required');
                         hasError = true;
                       }
 
-                      final birdCountStr = birdCountController.text.trim();
+                      final birdCountStr =
+                          birdCountController.text.trim();
                       int? birdCount;
                       if (birdCountStr.isEmpty) {
-                        setSheetState(() =>
-                            birdCountError = 'Number of birds is required');
+                        setSheetState(() => birdCountError =
+                            'Number of birds is required');
                         hasError = true;
                       } else {
                         birdCount = int.tryParse(birdCountStr);
                         if (birdCount == null || birdCount <= 0) {
-                          setSheetState(
-                              () => birdCountError = 'Must be a number > 0');
+                          setSheetState(() =>
+                              birdCountError = 'Must be a number > 0');
                           hasError = true;
                         }
                       }
 
-                      final costStr = costPerBirdController.text.trim();
+                      final costStr =
+                          costPerBirdController.text.trim();
                       double? costPerBird;
                       if (costStr.isEmpty) {
-                        setSheetState(() =>
-                            costPerBirdError = 'Cost per bird is required');
+                        setSheetState(() => costPerBirdError =
+                            'Cost per bird is required');
                         hasError = true;
                       } else {
                         costPerBird = double.tryParse(costStr);
-                        if (costPerBird == null || costPerBird <= 0) {
-                          setSheetState(
-                              () => costPerBirdError = 'Must be a number > 0');
+                        if (costPerBird == null ||
+                            costPerBird <= 0) {
+                          setSheetState(() => costPerBirdError =
+                              'Must be a number > 0');
                           hasError = true;
                         }
                       }
 
                       if (selectedDate == null) {
-                        setSheetState(
-                            () => dateError = 'Please select a stock date');
+                        setSheetState(() =>
+                            dateError = 'Please select a stock date');
                         hasError = true;
                       }
 
                       if (hasError) return;
 
+                      final navigator = Navigator.of(context);
+                      final messenger = ScaffoldMessenger.of(context);
+                      final financeProvider = context.read<FinanceProvider>();
                       try {
-                        final flockProvider = context.read<FlockProvider>();
+                        final flockProvider =
+                            context.read<FlockProvider>();
                         await flockProvider.createFlockFromForm(
+                          context: context,
                           name: nameController.text.trim(),
                           type: selectedType,
                           birdCount: birdCount!,
                           costPerBird: costPerBird!,
-                          startDate:
-                              selectedDate!.toIso8601String().split('T').first,
+                          startDate: selectedDate!
+                              .toIso8601String()
+                              .split('T')
+                              .first,
                           ageAtStocking: int.tryParse(
-                                  ageAtStockingController.text.trim()) ??
+                                  ageAtStockingController.text
+                                      .trim()) ??
                               0,
                           breed: selectedBreed,
-                          source: sourceController.text.trim().isEmpty
-                              ? null
-                              : sourceController.text.trim(),
+                          source:
+                              sourceController.text.trim().isEmpty
+                                  ? null
+                                  : sourceController.text.trim(),
                           housingType: selectedHousingType,
-                          notes: notesController.text.trim().isEmpty
-                              ? null
-                              : notesController.text.trim(),
+                          notes:
+                              notesController.text.trim().isEmpty
+                                  ? null
+                                  : notesController.text.trim(),
                         );
 
-                        // NEW: Automatically add initial cost as Expense
-                        final newFlock = flockProvider
-                            .flocks.last; // assuming last added is the new one
-                        final initialCost = newFlock.initialCost;
-                        await context.read<FinanceProvider>().addExpense(
+                        final newFlock =
+                            flockProvider.flocks.last;
+                        await financeProvider
+                            .addExpense(
                               flockId: newFlock.id,
                               category: 'chicks',
                               description:
-                                  'Initial purchase: ${newFlock.name} (${newFlock.birdCount} birds)',
-                              amount: initialCost,
+                                  'Initial purchase: ${newFlock.name} '
+                                  '(${newFlock.birdCount} birds)',
+                              amount: newFlock.initialCost,
                               date: newFlock.startDate,
-                              paymentMethod:
-                                  'cash', // can make configurable later
-                              notes: 'Auto-generated from flock creation',
+                              paymentMethod: 'cash',
+                              notes:
+                                  'Auto-generated from flock creation',
                             );
 
-                        if (context.mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  '✓ "${nameController.text.trim()}" flock created! Initial cost recorded.'),
-                              duration: const Duration(seconds: 3),
-                              backgroundColor: AppTheme.successColor,
-                            ),
-                          );
-                        }
+                        if (!mounted) return;
+                        navigator.pop();
+                        messenger
+                            .showSnackBar(
+                          SnackBar(
+                            content: Text(
+                                '✓ "${nameController.text.trim()}" '
+                                'created! Initial cost recorded.'),
+                            duration:
+                                const Duration(seconds: 3),
+                            backgroundColor:
+                                AppTheme.successColor,
+                          ),
+                        );
                       } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Error creating flock: $e'),
-                              backgroundColor: AppTheme.errorColor,
-                            ),
-                          );
-                        }
+                        if (!mounted) return;
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content:
+                                Text('Error creating flock: $e'),
+                            backgroundColor: AppTheme.errorColor,
+                          ),
+                        );
                       }
                     },
                     child: const Text('Create Flock',
@@ -950,11 +882,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showEditFlockDialog(BuildContext context, Flock flock) {
-    final nameController = TextEditingController(text: flock.name);
+    final nameController =
+        TextEditingController(text: flock.name);
     final birdCountController =
         TextEditingController(text: flock.birdCount.toString());
-    final sourceController = TextEditingController(text: flock.source ?? '');
-    final notesController = TextEditingController(text: flock.notes ?? '');
+    final sourceController =
+        TextEditingController(text: flock.source ?? '');
+    final notesController =
+        TextEditingController(text: flock.notes ?? '');
     final ageAtStockingController =
         TextEditingController(text: flock.ageAtStocking.toString());
     String selectedType = flock.type;
@@ -963,21 +898,12 @@ class _HomeScreenState extends State<HomeScreen> {
     String? selectedHousingType = flock.housingType;
 
     final breedOptions = [
-      'Noiler',
-      'Kuroiler',
-      'Rhode Island Red',
-      'Isa Brown',
-      'Ross 308',
-      'Cobb 500',
-      'Local/Indigenous',
-      'Other'
+      'Noiler', 'Kuroiler', 'Rhode Island Red', 'Isa Brown',
+      'Ross 308', 'Cobb 500', 'Local/Indigenous', 'Other'
     ];
     final housingOptions = [
-      'Deep litter',
-      'Battery cage',
-      'Free range',
-      'Semi-intensive',
-      'Other'
+      'Deep litter', 'Battery cage', 'Free range',
+      'Semi-intensive', 'Other'
     ];
 
     String? nameError;
@@ -992,14 +918,15 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, setSheetState) => Container(
           decoration: const BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius:
+                BorderRadius.vertical(top: Radius.circular(20)),
           ),
           padding: EdgeInsets.only(
             left: AppTheme.spacingMD,
             right: AppTheme.spacingMD,
             top: AppTheme.spacingMD,
-            bottom:
-                MediaQuery.of(context).viewInsets.bottom + AppTheme.spacingMD,
+            bottom: MediaQuery.of(context).viewInsets.bottom +
+                AppTheme.spacingMD,
           ),
           child: SingleChildScrollView(
             child: Column(
@@ -1019,18 +946,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text('Edit Flock', style: AppTheme.headingSmall),
                 const SizedBox(height: AppTheme.spacingMD),
                 Container(
-                  padding: const EdgeInsets.all(AppTheme.spacingSM),
+                  padding:
+                      const EdgeInsets.all(AppTheme.spacingSM),
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(AppTheme.radiusSM),
+                    color: AppTheme.primaryColor
+                        .withValues(alpha: 0.08),
+                    borderRadius:
+                        BorderRadius.circular(AppTheme.radiusSM),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.access_time,
-                              size: 16, color: AppTheme.primaryColor),
+                            const Icon(Icons.access_time,
+                              size: 16,
+                              color: AppTheme.primaryColor),
                           const SizedBox(width: 6),
                           Text(flock.ageDisplay,
                               style: AppTheme.bodyMedium.copyWith(
@@ -1045,44 +976,21 @@ class _HomeScreenState extends State<HomeScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: _getStageColor(flock.productionStage)
-                                  .withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
+                              color: _getStageColor(
+                                      flock.productionStage)
+                                  .withValues(alpha: 0.2),
+                              borderRadius:
+                                  BorderRadius.circular(12),
                             ),
                             child: Text(
                               flock.productionStage,
                               style: AppTheme.bodySmall.copyWith(
-                                color: _getStageColor(flock.productionStage),
+                                color: _getStageColor(
+                                    flock.productionStage),
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
-                          const Spacer(),
-                          if (flock.nextVaccination != null) ...[
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: flock.nextVaccination!
-                                            .daysUntil(flock.currentAgeDays) <=
-                                        3
-                                    ? AppTheme.errorColor.withOpacity(0.2)
-                                    : AppTheme.warningColor.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                'Next: ${flock.nextVaccination!.name} (${flock.nextVaccination!.daysUntil(flock.currentAgeDays)} days)',
-                                style: AppTheme.bodySmall.copyWith(
-                                  color: flock.nextVaccination!.daysUntil(
-                                              flock.currentAgeDays) <=
-                                          3
-                                      ? AppTheme.errorColor
-                                      : AppTheme.warningColor,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
                         ],
                       ),
                     ],
@@ -1091,93 +999,95 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: AppTheme.spacingMD),
                 TextField(
                   controller: nameController,
-                  decoration: AppTheme.inputDecoration('Flock Name *').copyWith(
-                    errorText: nameError,
-                  ),
+                  decoration: AppTheme.inputDecoration(
+                          'Flock Name *')
+                      .copyWith(errorText: nameError),
                 ),
                 const SizedBox(height: AppTheme.spacingMD),
                 DropdownButtonFormField<String>(
-                  value: selectedType,
-                  decoration: AppTheme.inputDecoration('Flock Type'),
+                  initialValue: selectedType,
+                  decoration:
+                      AppTheme.inputDecoration('Flock Type'),
                   items: [
-                    'Broilers',
-                    'Layers',
-                    'Noiler',
-                    'Local/Kienyeji',
-                    'Mixed/Other'
+                    'Broilers', 'Layers', 'Noiler',
+                    'Local/Kienyeji', 'Mixed/Other'
                   ]
-                      .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                      .map((t) => DropdownMenuItem(
+                          value: t, child: Text(t)))
                       .toList(),
-                  onChanged: (v) =>
-                      setSheetState(() => selectedType = v ?? flock.type),
+                  onChanged: (v) => setSheetState(
+                      () => selectedType = v ?? flock.type),
                 ),
                 const SizedBox(height: AppTheme.spacingMD),
                 DropdownButtonFormField<String>(
-                  value: selectedStatus,
-                  decoration: AppTheme.inputDecoration('Status'),
-                  items: ['active', 'inactive', 'sold']
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                  initialValue: selectedStatus,
+                  decoration:
+                      AppTheme.inputDecoration('Status'),
+                  items: ['active', 'inactive', 'sold out', 'lost']
+                      .map((s) => DropdownMenuItem(
+                          value: s, child: Text(s)))
                       .toList(),
-                  onChanged: (v) =>
-                      setSheetState(() => selectedStatus = v ?? flock.status),
+                  onChanged: (v) => setSheetState(
+                      () => selectedStatus = v ?? flock.status),
                 ),
                 const SizedBox(height: AppTheme.spacingMD),
                 TextField(
                   controller: ageAtStockingController,
-                  decoration: AppTheme.inputDecoration('Age at stocking (days)')
+                  decoration: AppTheme.inputDecoration(
+                          'Age at stocking (days)')
                       .copyWith(
-                    hintText: '0 for day-old, 18 for point-of-lay, etc.',
+                    hintText:
+                        '0 for day-old, 18 for point-of-lay',
                     errorText: ageError,
                   ),
                   keyboardType: TextInputType.number,
                 ),
                 const SizedBox(height: AppTheme.spacingMD),
                 DropdownButtonFormField<String?>(
-                  value: selectedBreed,
-                  decoration: AppTheme.inputDecoration('Bird Breed (optional)'),
+                  initialValue: selectedBreed,
+                  decoration: AppTheme.inputDecoration(
+                      'Bird Breed (optional)'),
                   items: [
                     const DropdownMenuItem(
-                        value: null, child: Text('Not specified')),
-                    ...breedOptions
-                        .map((b) => DropdownMenuItem(value: b, child: Text(b)))
-                        .toList(),
+                        value: null,
+                        child: Text('Not specified')),
+                    ...breedOptions.map((b) => DropdownMenuItem(value: b, child: Text(b))),
                   ],
-                  onChanged: (v) => setSheetState(() => selectedBreed = v),
+                  onChanged: (v) =>
+                      setSheetState(() => selectedBreed = v),
                 ),
                 const SizedBox(height: AppTheme.spacingMD),
                 TextField(
                   controller: sourceController,
-                  decoration:
-                      AppTheme.inputDecoration('Source of Chicks (optional)')
-                          .copyWith(
-                    hintText: 'e.g., CHI Farms, Local market, Hatchery',
-                  ),
+                  decoration: AppTheme.inputDecoration(
+                      'Source of Chicks (optional)'),
                 ),
                 const SizedBox(height: AppTheme.spacingMD),
                 DropdownButtonFormField<String?>(
-                  value: selectedHousingType,
-                  decoration:
-                      AppTheme.inputDecoration('Housing System (optional)'),
+                  initialValue: selectedHousingType,
+                  decoration: AppTheme.inputDecoration(
+                      'Housing System (optional)'),
                   items: [
                     const DropdownMenuItem(
-                        value: null, child: Text('Not specified')),
-                    ...housingOptions
-                        .map((h) => DropdownMenuItem(value: h, child: Text(h)))
-                        .toList(),
+                        value: null,
+                        child: Text('Not specified')),
+                    ...housingOptions.map((h) => DropdownMenuItem(value: h, child: Text(h))),
                   ],
-                  onChanged: (v) =>
-                      setSheetState(() => selectedHousingType = v),
+                  onChanged: (v) => setSheetState(
+                      () => selectedHousingType = v),
                 ),
                 const SizedBox(height: AppTheme.spacingMD),
                 TextField(
                   controller: birdCountController,
-                  decoration: AppTheme.inputDecoration('Number of Birds'),
+                  decoration: AppTheme.inputDecoration(
+                      'Number of Birds').copyWith(errorText: birdCountError),
                   keyboardType: TextInputType.number,
                 ),
                 const SizedBox(height: AppTheme.spacingMD),
                 TextField(
                   controller: notesController,
-                  decoration: AppTheme.inputDecoration('Notes (optional)'),
+                  decoration: AppTheme.inputDecoration(
+                      'Notes (optional)'),
                   maxLines: 2,
                 ),
                 const SizedBox(height: AppTheme.spacingLG),
@@ -1195,63 +1105,76 @@ class _HomeScreenState extends State<HomeScreen> {
                       bool hasError = false;
 
                       if (nameController.text.trim().isEmpty) {
-                        setSheetState(
-                            () => nameError = 'Flock name is required');
+                        setSheetState(() =>
+                            nameError = 'Flock name is required');
                         hasError = true;
                       }
 
-                      final parsedBirdCount =
-                          int.tryParse(birdCountController.text.trim());
-                      if (parsedBirdCount == null || parsedBirdCount <= 0) {
-                        setSheetState(
-                            () => birdCountError = 'Valid number > 0 required');
+                      final parsedBirdCount = int.tryParse(
+                          birdCountController.text.trim());
+                      if (parsedBirdCount == null ||
+                          parsedBirdCount <= 0) {
+                        setSheetState(() => birdCountError =
+                            'Valid number > 0 required');
                         hasError = true;
                       }
 
-                      final parsedAge =
-                          int.tryParse(ageAtStockingController.text.trim());
+                      final parsedAge = int.tryParse(
+                          ageAtStockingController.text.trim());
                       if (parsedAge == null || parsedAge < 0) {
-                        setSheetState(
-                            () => ageError = 'Age must be 0 or positive');
+                        setSheetState(() => ageError =
+                            'Age must be 0 or positive');
                         hasError = true;
                       }
 
                       if (hasError) return;
 
+                      final navigator = Navigator.of(context);
+                      final messenger = ScaffoldMessenger.of(context);
                       try {
-                        await context.read<FlockProvider>().updateFlock(
+                        await context
+                            .read<FlockProvider>()
+                            .updateFlock(
                               flock.copyWith(
                                 name: nameController.text.trim(),
                                 type: selectedType,
                                 status: selectedStatus,
-                                birdCount: parsedBirdCount ?? flock.birdCount,
-                                ageAtStocking: parsedAge ?? flock.ageAtStocking,
+                                birdCount: parsedBirdCount ??
+                                    flock.birdCount,
+                                ageAtStocking: parsedAge ??
+                                    flock.ageAtStocking,
                                 breed: selectedBreed,
-                                source: sourceController.text.trim().isEmpty
+                                source: sourceController.text
+                                        .trim()
+                                        .isEmpty
                                     ? null
                                     : sourceController.text.trim(),
                                 housingType: selectedHousingType,
-                                notes: notesController.text.trim().isEmpty
+                                notes: notesController.text
+                                        .trim()
+                                        .isEmpty
                                     ? null
                                     : notesController.text.trim(),
                               ),
                             );
-                        if (context.mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('Flock updated successfully'),
-                                backgroundColor: AppTheme.successColor),
-                          );
-                        }
+                        if (!mounted) return;
+                        navigator.pop();
+                        messenger.showSnackBar(
+                          const SnackBar(
+                              content: Text(
+                                  'Flock updated successfully'),
+                              backgroundColor:
+                                  AppTheme.successColor),
+                        );
                       } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content: Text('Failed to update: $e'),
-                                backgroundColor: AppTheme.errorColor),
-                          );
-                        }
+                        if (!mounted) return;
+                        messenger.showSnackBar(
+                          SnackBar(
+                              content:
+                                  Text('Failed to update: $e'),
+                              backgroundColor:
+                                  AppTheme.errorColor),
+                        );
                       }
                     },
                     child: const Text('Save Changes'),
@@ -1271,7 +1194,8 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Delete Flock'),
         content: Text(
-            'Are you sure you want to delete "${flock.name}"? This will also delete all associated records, expenses, sales and health events.'),
+            'Delete "${flock.name}"? This also deletes all records, '
+            'expenses, sales and health events.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -1282,21 +1206,25 @@ class _HomeScreenState extends State<HomeScreen> {
                 backgroundColor: AppTheme.errorColor,
                 foregroundColor: Colors.white),
             onPressed: () async {
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
               try {
-                await context.read<FlockProvider>().deleteFlock(flock.id);
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Flock deleted')),
-                  );
-                }
+                await context
+                    .read<FlockProvider>()
+                    .deleteFlock(flock.id);
+                if (!mounted) return;
+                navigator.pop();
+                messenger.showSnackBar(
+                  const SnackBar(
+                      content: Text('Flock deleted')),
+                );
               } catch (e) {
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to delete: $e')),
-                  );
-                }
+                if (!mounted) return;
+                navigator.pop();
+                messenger.showSnackBar(
+                  SnackBar(
+                      content: Text('Failed to delete: $e')),
+                );
               }
             },
             child: const Text('Delete'),
@@ -1305,46 +1233,128 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+void _showProFlockGate(BuildContext context) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle bar
+          Center(
+            child: Container(
+              width: 40, height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          // Icon
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.workspace_premium,
+                size: 40, color: AppTheme.primaryColor),
+          ),
+          const SizedBox(height: 16),
+
+          // Title
+          const Text(
+            'Unlock Unlimited Flocks',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+
+          // Subtitle
+          Text(
+            'Free accounts are limited to 1 flock. '
+            'Upgrade to Pro to manage as many flocks as you need.',
+            style: AppTheme.bodyMedium.copyWith(
+                color: AppTheme.textSecondary),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 28),
+
+          // CTA button → goes straight to UpgradeScreen
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const UpgradeScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.workspace_premium),
+              label: const Text('See plans'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                minimumSize: const Size(double.infinity, 52),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Not now'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
-
-// ─── Flock Grid Card ─────────────────────────────────────────────────────────
-
+}
 class _FlockGridCard extends StatelessWidget {
   final Flock flock;
-  final DailyRecord? latestRecord;
   final bool isSelected;
-  final int mortalityTotal;
-  final double breakEvenPerBird;
-  final String breakEvenDisplay;
-  final double recoveryPercentage;
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _FlockGridCard({
     required this.flock,
-    required this.latestRecord,
     required this.isSelected,
+    required this.onTap,
+    required this.onEdit,
+    required this.onDelete,
+    // Keep these in constructor for backward compat but don't display them
+    required this.latestRecord,
     required this.mortalityTotal,
     required this.breakEvenPerBird,
     required this.breakEvenDisplay,
     required this.recoveryPercentage,
-    required this.onTap,
-    required this.onEdit,
-    required this.onDelete,
   });
+
+  final DailyRecord? latestRecord;
+  final int mortalityTotal;
+  final double breakEvenPerBird;
+  final String breakEvenDisplay;
+  final double recoveryPercentage;
 
   @override
   Widget build(BuildContext context) {
-    final nextVax = flock.nextVaccination;
-    final daysToNext =
-        nextVax != null ? nextVax.daysUntil(flock.currentAgeDays) : null;
-    final costRecovered = breakEvenPerBird == 0 && recoveryPercentage >= 100;
-    final mortalityBase = flock.birdCount + mortalityTotal;
-    final mortalityPercentage =
-        mortalityBase > 0 ? mortalityTotal / mortalityBase * 100 : 0.0;
-    final mortalityLoss = mortalityTotal * breakEvenPerBird;
-
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1354,166 +1364,111 @@ class _FlockGridCard extends StatelessWidget {
           border: isSelected
               ? Border.all(color: AppTheme.primaryColor, width: 2)
               : null,
-          boxShadow: [isSelected ? AppTheme.shadowLG : AppTheme.shadowMD],
+          boxShadow: [
+            isSelected ? AppTheme.shadowLG : AppTheme.shadowMD
+          ],
         ),
         padding: const EdgeInsets.all(AppTheme.spacingMD),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Status badge ──────────────────────────────────
+            Align(
+              alignment: Alignment.topRight,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: flock.status == 'active'
+                      ? AppTheme.successColor
+                      : AppTheme.warningColor,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  flock.status.toUpperCase(),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+
+            // ── Flock icon ────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.egg_alt,
+                  size: 22, color: AppTheme.primaryColor),
+            ),
+            const SizedBox(height: 8),
+
+            // ── Flock name — auto-size ────────────────────────
+            Text(
+              flock.name,
+              style: AppTheme.bodyLarge
+                  .copyWith(fontWeight: FontWeight.w700),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+            ),
+            const SizedBox(height: 4),
+
+            // ── Bird count ────────────────────────────────────
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
+                Icon(Icons.groups,
+                    size: 12, color: AppTheme.textSecondary),
+                const SizedBox(width: 3),
+                Flexible(
                   child: Text(
-                    flock.name,
-                    style: AppTheme.bodyLarge
-                        .copyWith(fontWeight: FontWeight.w700),
+                    '${flock.birdCount} ${flock.type}',
+                    style: AppTheme.bodySmall.copyWith(
+                        color: AppTheme.textSecondary),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                   ),
                 ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: flock.status == 'active'
-                        ? AppTheme.successColor
-                        : AppTheme.warningColor,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    flock.status.toUpperCase(),
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold),
-                  ),
-                ),
               ],
             ),
-            const SizedBox(height: 2),
-            Text('${flock.birdCount} ${flock.type}', style: AppTheme.bodySmall),
             const SizedBox(height: 4),
+
+            // ── Age ───────────────────────────────────────────
             Row(
               children: [
                 Icon(Icons.calendar_today,
-                    size: 14, color: AppTheme.primaryColor),
-                const SizedBox(width: 4),
-                Text(flock.ageDisplay,
-                    style: AppTheme.bodySmall
-                        .copyWith(color: AppTheme.primaryColor)),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: _getStageColor(flock.productionStage).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                flock.productionStage,
-                style: AppTheme.bodySmall.copyWith(
-                  color: _getStageColor(flock.productionStage),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 10,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (daysToNext != null) ...[
-              const SizedBox(height: 6),
-              Flexible(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: daysToNext <= 3
-                        ? AppTheme.errorColor.withOpacity(0.15)
-                        : AppTheme.warningColor.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                    size: 12, color: AppTheme.primaryColor),
+                const SizedBox(width: 3),
+                Flexible(
                   child: Text(
-                    'Next vax: ${nextVax!.name} (${daysToNext} day${daysToNext == 1 ? '' : 's'})',
+                    flock.ageDisplay,
                     style: AppTheme.bodySmall.copyWith(
-                      color: daysToNext <= 3
-                          ? AppTheme.errorColor
-                          : AppTheme.warningColor,
-                      fontWeight: FontWeight.w600,
-                    ),
+                        color: AppTheme.primaryColor),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                   ),
                 ),
-              ),
-            ],
-            const Divider(height: AppTheme.spacingLG),
-            if (latestRecord != null) ...[
-              _StatRow(
-                icon: Icons.egg,
-                label: 'Eggs today',
-                value: '${latestRecord!.eggsCollected ?? 0}',
-                color: AppTheme.primaryColor,
-              ),
-              const SizedBox(height: 4),
-              _StatRow(
-                icon: Icons.warning,
-                label: 'Mortality',
-                value: mortalityTotal > 0
-                    ? '${mortalityPercentage.toStringAsFixed(1)}%'
-                    : '0%',
-                color: mortalityTotal > 0
-                    ? AppTheme.errorColor
-                    : AppTheme.successColor,
-              ),
-            ] else ...[
-              Text('No records yet',
-                  style: AppTheme.bodySmall
-                      .copyWith(color: AppTheme.textSecondary)),
-            ],
-            const SizedBox(height: 4),
-            _StatRow(
-              icon: costRecovered ? Icons.check_circle : Icons.price_check,
-              label: costRecovered ? 'Cost recovered' : 'Break-even',
-              value: costRecovered
-                  ? '${recoveryPercentage.toStringAsFixed(0)}%'
-                  : breakEvenDisplay,
-              color:
-                  costRecovered ? AppTheme.successColor : AppTheme.accentColor,
+              ],
             ),
-            if (!costRecovered)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  'Recovered ${recoveryPercentage.toStringAsFixed(0)}%',
-                  style: AppTheme.bodySmall.copyWith(fontSize: 10),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            if (mortalityTotal > 0 && breakEvenPerBird > 0) ...[
-              const SizedBox(height: 4),
-              _StatRow(
-                icon: Icons.money_off,
-                label: 'Mortality loss',
-                value: CurrencyFormatter.formatCompact(mortalityLoss),
-                color: AppTheme.errorColor,
-              ),
-            ],
+
             const Spacer(),
+
+            // ── Edit / Delete ─────────────────────────────────
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 GestureDetector(
                   onTap: onEdit,
-                  child: Icon(Icons.edit_outlined,
+                  child: const Icon(Icons.edit_outlined,
                       size: 16, color: AppTheme.textSecondary),
                 ),
                 const SizedBox(width: AppTheme.spacingSM),
                 GestureDetector(
                   onTap: onDelete,
-                  child: Icon(Icons.delete_outline,
+                  child: const Icon(Icons.delete_outline,
                       size: 16, color: AppTheme.errorColor),
                 ),
               ],
@@ -1525,6 +1480,26 @@ class _FlockGridCard extends StatelessWidget {
   }
 }
 
+class _ProChip extends StatelessWidget {
+  final String label;
+  const _ProChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+            color: AppTheme.primaryColor.withValues(alpha: 0.2)),
+      ),
+      child: Text(label,
+          style: const TextStyle(
+              fontSize: 12, color: AppTheme.primaryColor)),
+    );
+  }
+}
 // ─── Stat Row ─────────────────────────────────────────────────────────────────
 
 class _StatRow extends StatelessWidget {
@@ -1548,10 +1523,11 @@ class _StatRow extends StatelessWidget {
         const SizedBox(width: 4),
         Expanded(
             child: Text(label,
-                style: AppTheme.bodySmall, overflow: TextOverflow.ellipsis)),
+                style: AppTheme.bodySmall,
+                overflow: TextOverflow.ellipsis)),
         Text(value,
-            style: AppTheme.bodySmall
-                .copyWith(color: color, fontWeight: FontWeight.bold)),
+            style: AppTheme.bodySmall.copyWith(
+                color: color, fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -1580,17 +1556,20 @@ class _TodayStatItem extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(AppTheme.spacingSM),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(AppTheme.radiusSM),
+              color: color.withValues(alpha: 0.1),
+              borderRadius:
+                  BorderRadius.circular(AppTheme.radiusSM),
             ),
             child: Icon(icon, color: color, size: 20),
           ),
           const SizedBox(height: AppTheme.spacingXS),
           Text(value,
-              style: AppTheme.bodyLarge
-                  .copyWith(color: color, fontWeight: FontWeight.bold),
+              style: AppTheme.bodyLarge.copyWith(
+                  color: color, fontWeight: FontWeight.bold),
               overflow: TextOverflow.ellipsis),
-          Text(label, style: AppTheme.bodySmall, textAlign: TextAlign.center),
+          Text(label,
+              style: AppTheme.bodySmall,
+              textAlign: TextAlign.center),
         ],
       ),
     );
@@ -1601,7 +1580,6 @@ class _TodayStatItem extends StatelessWidget {
 
 class _SelectedFlockBanner extends StatelessWidget {
   final Flock flock;
-
   const _SelectedFlockBanner({required this.flock});
 
   @override
@@ -1614,17 +1592,20 @@ class _SelectedFlockBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.check_circle, color: Colors.white, size: 20),
+          const Icon(Icons.check_circle,
+              color: Colors.white, size: 20),
           const SizedBox(width: AppTheme.spacingSM),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Currently Viewing',
-                    style: AppTheme.bodySmall.copyWith(color: Colors.white70)),
+                    style: AppTheme.bodySmall
+                        .copyWith(color: Colors.white70)),
                 Text(flock.name,
                     style: AppTheme.bodyLarge.copyWith(
-                        color: Colors.white, fontWeight: FontWeight.bold)),
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -1632,9 +1613,11 @@ class _SelectedFlockBanner extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text('${flock.birdCount} birds',
-                  style: AppTheme.bodySmall.copyWith(color: Colors.white70)),
+                  style: AppTheme.bodySmall
+                      .copyWith(color: Colors.white70)),
               Text(flock.ageDisplay,
-                  style: AppTheme.bodySmall.copyWith(color: Colors.white70)),
+                  style: AppTheme.bodySmall
+                      .copyWith(color: Colors.white70)),
             ],
           ),
         ],
@@ -1656,132 +1639,113 @@ class _VaccinationBanner extends StatelessWidget {
     final isOverdue = daysLeft <= 0;
     final isUrgent = daysLeft <= 3 && daysLeft > 0;
 
-    Color bgColor;
-    Color textColor;
-    String message;
+    final Color bgColor;
+    final Color textColor;
+    final String message;
 
     if (isOverdue) {
-      bgColor = AppTheme.errorColor.withOpacity(0.15);
+      bgColor = AppTheme.errorColor.withValues(alpha: 0.15);
       textColor = AppTheme.errorColor;
-      message =
-          'Overdue: ${next.name} (was due ${-daysLeft} day${-daysLeft == 1 ? '' : 's'} ago)';
+      message = 'Overdue: ${next.name} '
+          '(${-daysLeft} day${-daysLeft == 1 ? '' : 's'} ago)';
     } else if (isUrgent) {
-      bgColor = AppTheme.warningColor.withOpacity(0.2);
+      bgColor = AppTheme.warningColor.withValues(alpha: 0.2);
       textColor = AppTheme.warningColor;
-      message =
-          'Urgent: ${next.name} in $daysLeft day${daysLeft == 1 ? '' : 's'}';
+      message = 'Due soon: ${next.name} in '
+          '$daysLeft day${daysLeft == 1 ? '' : 's'}';
     } else {
-      bgColor = AppTheme.successColor.withOpacity(0.15);
+      bgColor = AppTheme.successColor.withValues(alpha: 0.15);
       textColor = AppTheme.successColor;
-      message =
-          'Upcoming: ${next.name} in $daysLeft day${daysLeft == 1 ? '' : 's'}';
+      message = 'Upcoming: ${next.name} in '
+          '$daysLeft day${daysLeft == 1 ? '' : 's'}';
     }
 
-    return GestureDetector(
-      onTap: () {
-        _showFullScheduleDialog(context, flock);
-      },
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: AppTheme.spacingMD),
-        padding: const EdgeInsets.all(AppTheme.spacingMD),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(AppTheme.radiusMD),
-          border: Border.all(color: textColor.withOpacity(0.5)),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              isOverdue ? Icons.warning_amber_rounded : Icons.vaccines,
-              color: textColor,
-              size: 28,
-            ),
-            const SizedBox(width: AppTheme.spacingMD),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    message,
-                    style: AppTheme.bodyMedium.copyWith(
-                      color: textColor,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Tap to see full vaccination schedule for ${flock.name}',
-                    style: AppTheme.bodySmall
-                        .copyWith(color: textColor.withOpacity(0.9)),
-                  ),
-                ],
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppTheme.spacingMD),
+      padding: const EdgeInsets.all(AppTheme.spacingMD),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+        border:
+            Border.all(color: textColor.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isOverdue
+                ? Icons.warning_amber_rounded
+                : Icons.vaccines,
+            color: textColor,
+            size: 24,
+          ),
+          const SizedBox(width: AppTheme.spacingMD),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTheme.bodyMedium.copyWith(
+                color: textColor,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            Icon(Icons.arrow_forward_ios_rounded, color: textColor, size: 16),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
+class _PlanCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final Color color;
+  final List<String> benefits;
 
-  void _showFullScheduleDialog(BuildContext context, Flock flock) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title:
-            Text('Vaccination Schedule – ${flock.name} (${flock.ageDisplay})'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: flock.vaccinationSchedule.length,
-            itemBuilder: (context, index) {
-              final v = flock.vaccinationSchedule[index];
-              final daysUntil = v.daysUntil(flock.currentAgeDays);
-              final isDone = v.done;
-              final isUpcoming = daysUntil > 0 && daysUntil <= 7;
-              final isOverdue = daysUntil <= 0 && !isDone;
+  const _PlanCard({
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.benefits,
+  });
 
-              return ListTile(
-                leading: Icon(
-                  isDone ? Icons.check_circle : Icons.schedule,
-                  color: isDone
-                      ? AppTheme.successColor
-                      : isOverdue
-                          ? AppTheme.errorColor
-                          : isUpcoming
-                              ? AppTheme.warningColor
-                              : AppTheme.textSecondary,
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.spacingMD),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.workspace_premium, color: color),
+                const SizedBox(width: AppTheme.spacingSM),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.w700)),
+                      Text(subtitle, style: AppTheme.bodySmall),
+                    ],
+                  ),
                 ),
-                title: Text(v.name),
-                subtitle: Text(
-                  isDone
-                      ? 'Done'
-                      : daysUntil <= 0
-                          ? 'Overdue by ${-daysUntil} day${-daysUntil == 1 ? '' : 's'}'
-                          : 'Due in $daysUntil day${daysUntil == 1 ? '' : 's'} (day ${v.day})',
+              ],
+            ),
+            const SizedBox(height: AppTheme.spacingMD),
+            ...benefits.map(
+              (benefit) => Padding(
+                padding: const EdgeInsets.only(bottom: AppTheme.spacingSM),
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle, size: 18, color: color),
+                    const SizedBox(width: AppTheme.spacingSM),
+                    Expanded(child: Text(benefit)),
+                  ],
                 ),
-                trailing: isUpcoming || isOverdue
-                    ? Text(
-                        'Day ${v.day}',
-                        style: TextStyle(
-                          color: isOverdue
-                              ? AppTheme.errorColor
-                              : AppTheme.warningColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      )
-                    : null,
-              );
-            },
-          ),
+              ),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
       ),
     );
   }

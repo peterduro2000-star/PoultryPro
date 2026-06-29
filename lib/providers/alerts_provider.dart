@@ -31,6 +31,7 @@ class AlertsProvider extends ChangeNotifier {
     required Flock flock,
     required List<DailyRecord> records,
     required double recoveryPercentage,
+    bool isPro = false,
   }) async {
     try {
       final stockItems = await _db.getStockByFlock(flock.id);
@@ -39,6 +40,7 @@ class AlertsProvider extends ChangeNotifier {
         records: records,
         stockItems: stockItems,
         recoveryPercentage: recoveryPercentage,
+        isPro: isPro,
       );
       notifyListeners();
     } catch (e) {
@@ -50,6 +52,7 @@ class AlertsProvider extends ChangeNotifier {
     required List<Flock> flocks,
     required Map<String, List<DailyRecord>> recordsByFlock,
     required Map<String, double> recoveryByFlock,
+    bool isPro = false,
   }) async {
     _isLoading = true;
     notifyListeners();
@@ -59,6 +62,7 @@ class AlertsProvider extends ChangeNotifier {
         flock: flock,
         records: recordsByFlock[flock.id] ?? [],
         recoveryPercentage: recoveryByFlock[flock.id] ?? 0,
+        isPro: isPro,
       );
     }
 

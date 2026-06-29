@@ -1,0 +1,69 @@
+Folder PATH listing for volume Windows
+Volume serial number is 000001FF 1649:8283
+C:\DEV\APP\POULTRYPRO\LIB
+¦   main.dart
+¦   
++---constants
+¦       sync_status.dart
+¦       
++---models
+¦       bird.dart
+¦       daily_record.dart
+¦       expense.dart
+¦       finance.dart
+¦       flock.dart
+¦       health_event.dart
+¦       sale.dart
+¦       stock.dart
+¦       
++---providers
+¦       alerts_provider.dart
+¦       auth_provider.dart
+¦       daily_record_provider.dart
+¦       finance_provider.dart
+¦       flock_provider.dart
+¦       health_provider.dart
+¦       stock_provider.dart
+¦       
++---screens
+¦       backup_screen.dart
+¦       batch_comparison_screen.dart
+¦       finance_screen.dart
+¦       flocks_screen.dart
+¦       flock_workspace_screen.dart
+¦       health_screen.dart
+¦       home_screen.dart
+¦       main_navigation_screen.dart
+¦       records_screen.dart
+¦       settings_screen.dart
+¦       stock_screen.dart
+¦       tools_screen.dart
+¦       upgrade_screen.dart
+¦       
++---services
+¦       alerts_service.dart
+¦       database_service.dart
+¦       database_service.dart.backup
+¦       database_service.dart.new
+¦       mock_database_service.dart
+¦       subscription_service.dart
+¦       supabase_auth_service.dart
+¦       supabase_config.dart
+¦       sync_service.dart
+¦       
++---theme
+¦       app_theme.dart
+¦       
++---utils
+¦       currency_formatter.dart
+¦       date_formatter.dart
+¦       finance_calculator.dart
+¦       
++---widgets
+        alerts_panel.dart
+        dashboard_summary_card.dart
+        farm_performance_card.dart
+        flock_header.dart
+        metric_card.dart
+        sync_status_banner.dart
+        

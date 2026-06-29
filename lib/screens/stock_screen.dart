@@ -73,8 +73,8 @@ void dispose() {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(Icons.home,
-                            size: 48,
-                            color: AppTheme.primaryColor.withOpacity(0.4)),
+                          size: 48,
+                          color: AppTheme.primaryColor.withValues(alpha: 0.4)),
                         const SizedBox(height: AppTheme.spacingMD),
                         Text('No flock selected',
                             style: AppTheme.headingSmall),
@@ -104,7 +104,7 @@ void dispose() {
                             Icon(Icons.inventory_2,
                                 size: 80,
                                 color:
-                                    AppTheme.primaryColor.withOpacity(0.3)),
+                                          AppTheme.primaryColor.withValues(alpha: 0.3)),
                             const SizedBox(height: AppTheme.spacingMD),
                             Text('No stock items yet',
                                 style: AppTheme.headingSmall),
@@ -314,7 +314,7 @@ class _SummaryChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(
             vertical: AppTheme.spacingSM, horizontal: AppTheme.spacingSM),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(AppTheme.radiusSM),
         ),
         child: Column(
@@ -361,7 +361,7 @@ class _FilterBar extends StatelessWidget {
                 selected: selected,
                 onSelected: onSelected),
             _FilterChip(
-                label: '⚠ Low (${alertCount})',
+              label: '⚠ Low ($alertCount)',
                 value: 'low',
                 selected: selected,
                 onSelected: onSelected,
@@ -413,8 +413,8 @@ class _FilterChip extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(right: AppTheme.spacingSM),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? color : color.withOpacity(0.1),
+          decoration: BoxDecoration(
+          color: isSelected ? color : color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
@@ -469,7 +469,7 @@ class _StockCard extends StatelessWidget {
         border: isLow
             ? Border.all(color: AppTheme.errorColor, width: 1.5)
             : null,
-        boxShadow: [AppTheme.shadowMD],
+        boxShadow: const [AppTheme.shadowMD],
       ),
       padding: const EdgeInsets.all(AppTheme.spacingMD),
       child: Column(
@@ -480,7 +480,7 @@ class _StockCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(AppTheme.spacingSM),
                 decoration: BoxDecoration(
-                  color: _typeColor.withOpacity(0.1),
+                  color: _typeColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(AppTheme.radiusSM),
                 ),
                 child: Icon(_typeIcon, color: _typeColor, size: 20),
@@ -722,7 +722,7 @@ class _AddStockSheetState extends State<_AddStockSheet> {
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _itemType,
+                        initialValue: _itemType,
                       decoration: AppTheme.inputDecoration('Type'),
                       items: _itemTypes
                           .map((t) =>
@@ -734,7 +734,7 @@ class _AddStockSheetState extends State<_AddStockSheet> {
                   const SizedBox(width: AppTheme.spacingSM),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _unit,
+                        initialValue: _unit,
                       decoration: AppTheme.inputDecoration('Unit'),
                       items: _units
                           .map((u) =>
@@ -784,7 +784,7 @@ class _AddStockSheetState extends State<_AddStockSheet> {
               TextFormField(
                 controller: _costController,
                 decoration:
-                    AppTheme.inputDecoration('Cost per ${_unit} (₦)'),
+                  AppTheme.inputDecoration('Cost per $_unit (₦)'),
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 validator: (v) => v!.isEmpty ? 'Required' : null,

@@ -6,9 +6,10 @@ Poultry Pro ("the App") is developed and operated by Proxima Novum. This Privacy
 
 ## Information We Collect
 
-The current release of Poultry Pro does not collect, transmit, sell, or share user data.
+Poultry Pro is designed as a privacy-first application. 
 
-Any farm, flock, sales, expense, or production records entered into the App are stored locally on the user's device and are not sent to Proxima Novum or any external server by the current release.
+1. **Local Storage:** By default, all farm records (flocks, sales, expenses) are stored locally on your device.
+2. **Pro Features:** If you choose to upgrade to Poultry Pro Plus, we collect your phone number via Supabase Auth for account verification and secure cloud synchronization. This data is encrypted and used only to provide backup services.
 
 ## How We Use Information
 
@@ -18,11 +19,11 @@ Information entered by the user is used only within the App on the user's device
 
 ## Data Storage
 
-Poultry Pro stores user data locally on the user's device. The current release does not include account authentication, cloud backup, cloud synchronization, analytics, or advertising.
+Standard data is stored locally. Pro users' data is synchronized with secure servers powered by Supabase to ensure data recovery if a device is lost.
 
 ## Third-Party Services
 
-The current release of Poultry Pro does not use third-party analytics, advertising, authentication, or cloud synchronization services.
+We use **Supabase** for secure authentication and cloud storage for Pro users. We do not use third-party advertising or data-harvesting analytics.
 
 If the App is downloaded through an app store such as Google Play or Palmstore, that store may process information under its own privacy policy.
 

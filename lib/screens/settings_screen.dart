@@ -1,10 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import '../theme/app_theme.dart';
+import '../providers/auth_provider.dart';
+import '../providers/license_provider.dart';
 import '../services/database_service.dart';
+import 'upgrade_screen.dart';
+import 'backup_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -24,7 +30,6 @@ class SettingsScreen extends StatelessWidget {
         '${DateTime.now().millisecondsSinceEpoch}.json',
       );
 
-      // Write the file before sharing
       await file.writeAsString(jsonString);
 
       await Share.shareXFiles(
@@ -146,62 +151,337 @@ class SettingsScreen extends StatelessWidget {
     }
   }
 
+  // Replacement bottom sheet for phone number entry
+  void _showPhoneSignInSheet(BuildContext context) {
+    final phoneController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => Padding(
+        padding: EdgeInsets.fromLTRB(
+            24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Enter your phone number',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            const Text(
+                'We\'ll send a verification code to confirm your account.'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: phoneController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                hintText: '+2348012345678',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.phone),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () async {
+                  final phone = phoneController.text.trim();
+                  if (phone.isEmpty) return;
+                  Navigator.pop(context);
+                  final auth = context.read<AuthProvider>();
+                  final sent = await auth.sendOtp(phone);
+                  if (sent && context.mounted) {
+                    _showOtpSheet(context, phone);
+                  } else if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(auth.error ?? 'Failed to send code'),
+                        backgroundColor: AppTheme.errorColor,
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Send Code'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showOtpSheet(BuildContext context, String phone) {
+    final otpController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => Padding(
+        padding: EdgeInsets.fromLTRB(
+            24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Enter verification code',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text('Code sent to $phone'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: otpController,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                hintText: '123456',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.lock_outline),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () async {
+                  final token = otpController.text.trim();
+                  if (token.length != 6) return;
+                  Navigator.pop(context);
+                  final auth = context.read<AuthProvider>();
+                  final verified = await auth.verifyOtp(token);
+                  if (verified && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                            '✅ Account verified! You can now upgrade.'),
+                        backgroundColor: AppTheme.successColor,
+                      ),
+                    );
+                  } else if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(auth.error ?? 'Incorrect code'),
+                        backgroundColor: AppTheme.errorColor,
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Verify'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Updated sign-in prompt – uses phone bottom sheet instead of broken route
+  void _showSignInRequired(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.lock_outline, size: 48, color: AppTheme.primaryColor),
+            const SizedBox(height: 16),
+            const Text(
+              'Sign In to Upgrade',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'You need a verified account to subscribe to Poultry Pro. '
+              'Sign in with your phone number to continue.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(context); // close sheet
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const BackupScreen()),
+                  );
+                },
+                icon: const Icon(Icons.phone),
+                label: const Text('Sign In with Phone'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Not now'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProCard(BuildContext context, AuthProvider auth) {
+    final isPro = context.watch<LicenseProvider>().isPro;
+    final isAnonymous = auth.isAnonymous;
+
+    return Card(
+      color: isPro ? Colors.orange.shade50 : Colors.green.shade50,
+      child: ListTile(
+        leading: Icon(
+          isPro ? Icons.stars : Icons.verified,
+          color: isPro ? Colors.orange : Colors.green,
+        ),
+        title: Text(isPro ? 'PoultryPro Premium' : 'PoultryPro Plus'),
+        subtitle: Text(
+          isPro
+              ? 'Subscription Active'
+              : isAnonymous
+                  ? 'Sign in to unlock Pro features'
+                  : 'Manage your subscription',
+        ),
+        trailing: isPro
+            ? const Icon(Icons.check_circle, color: Colors.green)
+            : ElevatedButton(
+                onPressed: () async {
+
+                  final user = Supabase.instance.client.auth.currentUser;
+
+              
+if (user != null && user.isAnonymous) {
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const BackupScreen()),
+  );
+  return;
+}
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const UpgradeScreen(),
+                    ),
+                  );
+
+                },
+                child: Text(isAnonymous ? 'Sign In' : 'Upgrade'),
+              ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.all(AppTheme.spacingMD),
         children: [
-          Text('Data Management',
-              style:
-                  AppTheme.headingSmall),
-          const SizedBox(height: AppTheme.spacingSM),
-          Text(
-            'Cloud backup runs automatically. Use manual backup '
-            'to save a local copy to your phone.',
-            style: AppTheme.bodySmall
-                .copyWith(color: AppTheme.textSecondary),
+          // ── Subscription Section ──────────────────────────
+          Container(
+            decoration: AppTheme.cardDecoration,
+            padding: const EdgeInsets.all(AppTheme.spacingMD),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.workspace_premium,
+                        color: AppTheme.primaryColor, size: 18),
+                    const SizedBox(width: AppTheme.spacingSM),
+                    Text('Subscription', style: AppTheme.headingSmall),
+                  ],
+                ),
+                const SizedBox(height: AppTheme.spacingMD),
+                _buildProCard(context, auth),
+              ],
+            ),
           ),
           const SizedBox(height: AppTheme.spacingLG),
-          _SettingsButton(
-            icon: Icons.backup,
-            title: 'Manual Backup',
-            subtitle: 'Save a local copy and share via WhatsApp',
-            color: AppTheme.secondaryColor,
-            onTap: () => _backupData(context),
-          ),
-          const SizedBox(height: AppTheme.spacingSM),
-          _SettingsButton(
-            icon: Icons.restore,
-            title: 'Restore From Backup',
-            subtitle: 'Load data from a previous backup file',
-            color: AppTheme.warningColor,
-            onTap: () => _restoreData(context),
-          ),
-          const SizedBox(height: AppTheme.spacingSM),
-          _SettingsButton(
-            icon: Icons.delete_forever,
-            title: 'Clear All Data',
-            subtitle: 'Delete everything — cannot be undone',
-            color: AppTheme.errorColor,
-            onTap: () => _clearAllData(context),
+
+          // ── Data Management Section ───────────────────────
+          Container(
+            decoration: AppTheme.cardDecoration,
+            padding: const EdgeInsets.all(AppTheme.spacingMD),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.storage_rounded,
+                        color: AppTheme.secondaryColor, size: 18),
+                    const SizedBox(width: AppTheme.spacingSM),
+                    Text('Data Management', style: AppTheme.headingSmall),
+                  ],
+                ),
+                const SizedBox(height: AppTheme.spacingSM),
+                Text(
+                  'Cloud backup runs automatically. Use manual backup '
+                  'to save a local copy to your phone.',
+                  style: AppTheme.bodySmall
+                      .copyWith(color: AppTheme.textSecondary),
+                ),
+                const SizedBox(height: AppTheme.spacingMD),
+                _SettingsButton(
+                  icon: Icons.backup,
+                  title: 'Manual Backup',
+                  subtitle: 'Save a local copy and share via WhatsApp',
+                  color: AppTheme.secondaryColor,
+                  onTap: () => _backupData(context),
+                ),
+                const SizedBox(height: AppTheme.spacingSM),
+                _SettingsButton(
+                  icon: Icons.restore,
+                  title: 'Restore From Backup',
+                  subtitle: 'Load data from a previous backup file',
+                  color: AppTheme.warningColor,
+                  onTap: () => _restoreData(context),
+                ),
+                const SizedBox(height: AppTheme.spacingSM),
+                _SettingsButton(
+                  icon: Icons.delete_forever,
+                  title: 'Clear All Data',
+                  subtitle: 'Delete everything — cannot be undone',
+                  color: AppTheme.errorColor,
+                  onTap: () => _clearAllData(context),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: AppTheme.spacingXL),
-          const Divider(),
-          const SizedBox(height: AppTheme.spacingMD),
-          Text('App Version 1.0.0',
-              style:
-                  AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary)),
-          Text('Built for Nigerian Poultry Farmers',
-              style:
-                  AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary)),
+
+          // ── Footer ────────────────────────────────────────
+          Center(
+            child: Column(
+              children: [
+                Text('App Version 1.0.2',
+                    style: AppTheme.bodySmall
+                        .copyWith(color: AppTheme.textSecondary)),
+                const SizedBox(height: 2),
+                Text('Built for African Poultry Farmers',
+                    style: AppTheme.bodySmall
+                        .copyWith(color: AppTheme.textSecondary)),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 }
+
 
 class _SettingsButton extends StatelessWidget {
   final IconData icon;
@@ -235,8 +515,8 @@ class _SettingsButton extends StatelessWidget {
                 .copyWith(fontWeight: FontWeight.w600)),
         subtitle: Text(subtitle, style: AppTheme.bodySmall),
         onTap: onTap,
-        trailing:
-            Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textSecondary),
+        trailing: Icon(Icons.arrow_forward_ios,
+            size: 16, color: AppTheme.textSecondary),
       ),
     );
   }

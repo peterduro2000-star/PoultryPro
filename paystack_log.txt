@@ -1,0 +1,4 @@
+--------- beginning of main
+06-20 05:59:50.578 29637 29726 I flutter : [IMPORTANT:flutter/shell/platform/android/android_context_vk_impeller.cc(62)] Using the Impeller rendering backend (Vulkan).
+06-20 05:59:50.645 29637 29726 I flutter : [IMPORTANT:flutter/shell/platform/android/android_context_gl_impeller.cc(104)] Using the Impeller rendering backend (OpenGLES).
+06-20 05:59:50.842 29637 29637 I flutter : SyncService: periodic sync started (3m)

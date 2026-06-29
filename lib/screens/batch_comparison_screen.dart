@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
+import '../models/daily_record.dart';
 import '../models/flock.dart';
-import '../providers/daily_record_provider.dart';
 import '../providers/finance_provider.dart';
 import '../providers/flock_provider.dart';
 import '../services/database_service.dart';
@@ -23,6 +22,7 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
   _BatchStats? _statsA;
   _BatchStats? _statsB;
   bool _loading = false;
+  String? _error; // ← NEW: surface errors instead of silently spinning
 
   @override
   void initState() {
@@ -46,115 +46,165 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
   }
 
   Future<void> _loadStats() async {
-    if (_flockA == null || _flockB == null) return;
-    setState(() => _loading = true);
-
-    final db = DatabaseService();
-    final financeProvider = context.read<FinanceProvider>();
-
-    final recordsA = await db.getDailyRecordsByFlock(_flockA!.id);
-    final recordsB = await db.getDailyRecordsByFlock(_flockB!.id);
-
-    final mortalityA =
-        await db.getTotalMortalityByFlock(_flockA!.id);
-    final mortalityB =
-        await db.getTotalMortalityByFlock(_flockB!.id);
-
-    final expensesA =
-        financeProvider.totalExpensesForFlock(_flockA!.id);
-    final expensesB =
-        financeProvider.totalExpensesForFlock(_flockB!.id);
-
-    final salesA = financeProvider.totalSalesForFlock(_flockA!.id);
-    final salesB = financeProvider.totalSalesForFlock(_flockB!.id);
-
-    final recoveryA =
-        financeProvider.recoveryPercentageForFlock(_flockA!.id);
-    final recoveryB =
-        financeProvider.recoveryPercentageForFlock(_flockB!.id);
-
-    // FCR calculation
-    double _calcFcr(Flock flock, records) {
-      final totalFeed = records.fold<double>(
-          0, (s, r) => s + (r.feedGiven ?? 0));
-      final withWeight =
-          records.where((r) => r.averageWeight != null).toList();
-      if (withWeight.length < 2 || totalFeed <= 0) return 0;
-      final weightGain =
-          (withWeight.first.averageWeight! - withWeight.last.averageWeight!) *
-              flock.birdCount;
-      if (weightGain <= 0) return 0;
-      return totalFeed / weightGain;
+    if (_flockA == null || _flockB == null) {
+      debugPrint('=== _loadStats: aborted — flock is null');
+      return;
     }
 
-    final fcrA = _calcFcr(_flockA!, recordsA);
-    final fcrB = _calcFcr(_flockB!, recordsB);
-
-    // Duration in days
-    final startA = DateTime.tryParse(_flockA!.startDate);
-    final startB = DateTime.tryParse(_flockB!.startDate);
-    final durationA = startA != null
-        ? DateTime.now().difference(startA).inDays
-        : 0;
-    final durationB = startB != null
-        ? DateTime.now().difference(startB).inDays
-        : 0;
-
-    final profitA = salesA - expensesA;
-    final profitB = salesB - expensesB;
-
-    final mortalityRateA = _flockA!.initialBirdCount > 0
-        ? mortalityA / _flockA!.initialBirdCount * 100
-        : 0.0;
-    final mortalityRateB = _flockB!.initialBirdCount > 0
-        ? mortalityB / _flockB!.initialBirdCount * 100
-        : 0.0;
-
-    final costPerBirdA = _flockA!.initialBirdCount > 0
-        ? expensesA / _flockA!.initialBirdCount
-        : 0.0;
-    final costPerBirdB = _flockB!.initialBirdCount > 0
-        ? expensesB / _flockB!.initialBirdCount
-        : 0.0;
-
-    final profitPerBirdA = _flockA!.initialBirdCount > 0
-        ? profitA / _flockA!.initialBirdCount
-        : 0.0;
-    final profitPerBirdB = _flockB!.initialBirdCount > 0
-        ? profitB / _flockB!.initialBirdCount
-        : 0.0;
+    debugPrint('=== _loadStats: START flockA=${_flockA!.id} flockB=${_flockB!.id}');
 
     setState(() {
-      _statsA = _BatchStats(
-        flock: _flockA!,
-        totalExpenses: expensesA,
-        totalSales: salesA,
-        profit: profitA,
-        profitPerBird: profitPerBirdA,
-        costPerBird: costPerBirdA,
-        mortalityRate: mortalityRateA,
-        mortalityCount: mortalityA,
-        recoveryPercentage: recoveryA,
-        fcr: fcrA,
-        durationDays: durationA,
-        recordCount: recordsA.length,
-      );
-      _statsB = _BatchStats(
-        flock: _flockB!,
-        totalExpenses: expensesB,
-        totalSales: salesB,
-        profit: profitB,
-        profitPerBird: profitPerBirdB,
-        costPerBird: costPerBirdB,
-        mortalityRate: mortalityRateB,
-        mortalityCount: mortalityB,
-        recoveryPercentage: recoveryB,
-        fcr: fcrB,
-        durationDays: durationB,
-        recordCount: recordsB.length,
-      );
-      _loading = false;
+      _loading = true;
+      _error = null;
+      // ← FIXED: clear stale stats so we never fall into the null spinner
+      _statsA = null;
+      _statsB = null;
     });
+
+    try {
+      final fp = context.read<FinanceProvider>();
+      debugPrint('=== _loadStats: FinanceProvider read OK, isFarmFinanceLoading=${fp.isFarmFinanceLoading}, farmExpenses=${fp.farmExpenses.length}');
+
+      // If farm finance data was never loaded, kick it off now and wait
+      if (!fp.isFarmFinanceLoading &&
+          fp.farmExpenses.isEmpty &&
+          fp.farmSales.isEmpty) {
+        debugPrint('=== _loadStats: calling loadFarmFinanceData');
+        await fp.loadFarmFinanceData();
+        debugPrint('=== _loadStats: loadFarmFinanceData done');
+      } else if (fp.isFarmFinanceLoading) {
+        debugPrint('=== _loadStats: waiting for farm finance to finish...');
+        await Future.doWhile(() async {
+          await Future.delayed(const Duration(milliseconds: 50));
+          if (!mounted) return false;
+          return context.read<FinanceProvider>().isFarmFinanceLoading;
+        });
+        debugPrint('=== _loadStats: farm finance wait done');
+      }
+
+      if (!mounted) return;
+
+      final db = DatabaseService();
+      debugPrint('=== _loadStats: calling getDailyRecordsByFlock A');
+      final recordsA = await db.getDailyRecordsByFlock(_flockA!.id);
+      debugPrint('=== _loadStats: recordsA=${recordsA.length}');
+
+      debugPrint('=== _loadStats: calling getDailyRecordsByFlock B');
+      final recordsB = await db.getDailyRecordsByFlock(_flockB!.id);
+      debugPrint('=== _loadStats: recordsB=${recordsB.length}');
+
+      debugPrint('=== _loadStats: calling getTotalMortalityByFlock A');
+      final mortalityA = (await db.getTotalMortalityByFlock(_flockA!.id)).toDouble();
+      debugPrint('=== _loadStats: mortalityA=$mortalityA');
+
+      debugPrint('=== _loadStats: calling getTotalMortalityByFlock B');
+      final mortalityB = (await db.getTotalMortalityByFlock(_flockB!.id)).toDouble();
+      debugPrint('=== _loadStats: mortalityB=$mortalityB');
+
+      debugPrint('=== _loadStats: all DB calls done, building stats');
+
+      if (!mounted) return;
+
+      // Re-read provider after awaiting DB — context may have changed
+      final finance = context.read<FinanceProvider>();
+
+      final expensesA = finance.totalExpensesForFlock(_flockA!.id);
+      final expensesB = finance.totalExpensesForFlock(_flockB!.id);
+
+      final salesA = finance.totalSalesForFlock(_flockA!.id);
+      final salesB = finance.totalSalesForFlock(_flockB!.id);
+
+      final recoveryA = finance.recoveryPercentageForFlock(_flockA!.id);
+      final recoveryB = finance.recoveryPercentageForFlock(_flockB!.id);
+
+      double calcFcr(Flock flock, List<DailyRecord> records) {
+        final totalFeed = records.fold<double>(
+            0.0, (double s, DailyRecord r) => s + (r.feedGiven ?? 0.0));
+        final withWeight =
+            records.where((r) => r.averageWeight != null).toList();
+        if (withWeight.length < 2 || totalFeed <= 0) return 0;
+        final weightGain =
+            (withWeight.first.averageWeight! - withWeight.last.averageWeight!) *
+                flock.birdCount.toDouble();
+        if (weightGain <= 0) return 0;
+        return totalFeed / weightGain;
+      }
+
+      final fcrA = calcFcr(_flockA!, recordsA);
+      final fcrB = calcFcr(_flockB!, recordsB);
+
+      final startA = DateTime.tryParse(_flockA!.startDate);
+      final startB = DateTime.tryParse(_flockB!.startDate);
+      final durationA =
+          startA != null ? DateTime.now().difference(startA).inDays : 0;
+      final durationB =
+          startB != null ? DateTime.now().difference(startB).inDays : 0;
+
+      final profitA = salesA - expensesA;
+      final profitB = salesB - expensesB;
+
+      final mortalityRateA = _flockA!.initialBirdCount > 0
+          ? mortalityA / _flockA!.initialBirdCount.toDouble() * 100
+          : 0.0;
+      final mortalityRateB = _flockB!.initialBirdCount > 0
+          ? mortalityB / _flockB!.initialBirdCount.toDouble() * 100
+          : 0.0;
+
+      final costPerBirdA = _flockA!.birdCount > 0
+          ? expensesA / _flockA!.birdCount
+          : (expensesA > 0 ? expensesA / _flockA!.initialBirdCount : 0.0);
+      final costPerBirdB = _flockB!.birdCount > 0
+          ? expensesB / _flockB!.birdCount
+          : (expensesB > 0 ? expensesB / _flockB!.initialBirdCount : 0.0);
+
+      final profitPerBirdA =
+          _flockA!.birdCount > 0 ? profitA / _flockA!.birdCount : 0.0;
+      final profitPerBirdB =
+          _flockB!.birdCount > 0 ? profitB / _flockB!.birdCount : 0.0;
+
+      if (!mounted) return;
+
+      setState(() {
+        _statsA = _BatchStats(
+          flock: _flockA!,
+          totalExpenses: expensesA,
+          totalSales: salesA,
+          profit: profitA,
+          profitPerBird: profitPerBirdA,
+          costPerBird: costPerBirdA,
+          mortalityRate: mortalityRateA,
+          mortalityCount: mortalityA.toInt(),
+          recoveryPercentage: recoveryA,
+          fcr: fcrA,
+          durationDays: durationA,
+          recordCount: recordsA.length,
+        );
+        _statsB = _BatchStats(
+          flock: _flockB!,
+          totalExpenses: expensesB,
+          totalSales: salesB,
+          profit: profitB,
+          profitPerBird: profitPerBirdB,
+          costPerBird: costPerBirdB,
+          mortalityRate: mortalityRateB,
+          mortalityCount: mortalityB.toInt(),
+          recoveryPercentage: recoveryB,
+          fcr: fcrB,
+          durationDays: durationB,
+          recordCount: recordsB.length,
+        );
+        _loading = false; // ← always reaches here now
+      });
+    } catch (e, st) {
+      debugPrint('=== _loadStats ERROR: $e');
+      debugPrint('=== STACK: $st');
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Error: $e'; // show actual error on screen
+        });
+      }
+    }
   }
 
   @override
@@ -187,8 +237,8 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
           Text('No flocks yet', style: AppTheme.headingSmall),
           const SizedBox(height: AppTheme.spacingSM),
           Text('Create at least two flocks to compare batches.',
-              style: AppTheme.bodyMedium
-                  .copyWith(color: AppTheme.textSecondary),
+              style:
+                  AppTheme.bodyMedium.copyWith(color: AppTheme.textSecondary),
               textAlign: TextAlign.center),
         ],
       ),
@@ -208,8 +258,8 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
           const SizedBox(height: AppTheme.spacingSM),
           Text(
             'You have one flock. Create or complete a second batch to compare performance.',
-            style: AppTheme.bodyMedium
-                .copyWith(color: AppTheme.textSecondary),
+            style:
+                AppTheme.bodyMedium.copyWith(color: AppTheme.textSecondary),
             textAlign: TextAlign.center,
           ),
         ],
@@ -220,7 +270,6 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
   Widget _buildComparison(List<Flock> flocks) {
     return Column(
       children: [
-        // ── Flock selectors ──────────────────────────────────────────────
         Container(
           color: Colors.white,
           padding: const EdgeInsets.all(AppTheme.spacingMD),
@@ -241,8 +290,8 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(
                     horizontal: AppTheme.spacingMD),
-                child: Icon(Icons.compare_arrows,
-                    color: AppTheme.textSecondary),
+                child:
+                    Icon(Icons.compare_arrows, color: AppTheme.textSecondary),
               ),
               Expanded(
                 child: _FlockSelector(
@@ -259,35 +308,52 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
             ],
           ),
         ),
-
-        // ── Content ──────────────────────────────────────────────────────
         Expanded(
           child: _loading
               ? const Center(child: CircularProgressIndicator())
-              : _flockA == null || _flockB == null
+              : _error != null
+                  // ← FIXED: show error + retry instead of infinite spinner
                   ? Center(
-                      child: Text('Select two batches to compare',
-                          style: AppTheme.bodyMedium.copyWith(
-                              color: AppTheme.textSecondary)))
-                  : _statsA == null || _statsB == null
-                      ? const Center(child: CircularProgressIndicator())
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.error_outline,
+                              size: 48,
+                              color: AppTheme.errorColor
+                                  .withValues(alpha: 0.6)),
+                          const SizedBox(height: AppTheme.spacingMD),
+                          Text(_error!, style: AppTheme.bodyMedium),
+                          const SizedBox(height: AppTheme.spacingMD),
+                          OutlinedButton.icon(
+                            onPressed: _loadStats,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _flockA == null || _flockB == null
+                      ? Center(
+                          child: Text('Select two batches to compare',
+                              style: AppTheme.bodyMedium.copyWith(
+                                  color: AppTheme.textSecondary)))
+                      // ← FIXED: no second spinner — _statsA/_statsB are
+                      //   always set together with _loading = false
                       : _buildStats(),
         ),
       ],
     );
   }
 
+  // _buildStats(), _BatchStats, and all UI widgets below are unchanged
   Widget _buildStats() {
     final a = _statsA!;
     final b = _statsB!;
-
-    // Determine overall winner by profit
     final aWins = a.profit >= b.profit;
 
     return ListView(
       padding: const EdgeInsets.all(AppTheme.spacingMD),
       children: [
-        // ── Winner banner ────────────────────────────────────────────────
         if (a.totalSales > 0 || b.totalSales > 0)
           _WinnerBanner(
             winnerName: aWins ? a.flock.name : b.flock.name,
@@ -296,12 +362,8 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
             profit: aWins ? a.profit : b.profit,
           ),
         const SizedBox(height: AppTheme.spacingMD),
-
-        // ── Column headers ───────────────────────────────────────────────
         _ComparisonHeader(statsA: a, statsB: b),
         const SizedBox(height: AppTheme.spacingMD),
-
-        // ── Metrics ──────────────────────────────────────────────────────
         _ComparisonCard(
           title: 'Financial Performance',
           rows: [
@@ -309,7 +371,6 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
               label: 'Total Expenses',
               valueA: CurrencyFormatter.formatCompact(a.totalExpenses),
               valueB: CurrencyFormatter.formatCompact(b.totalExpenses),
-              // Lower is better for expenses
               aIsBetter: a.totalExpenses <= b.totalExpenses,
               lowerIsBetter: true,
               hasData: a.totalExpenses > 0 || b.totalExpenses > 0,
@@ -341,19 +402,15 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
             ),
             _ComparisonRow(
               label: 'Cost Recovery',
-              valueA:
-                  '${a.recoveryPercentage.toStringAsFixed(1)}%',
-              valueB:
-                  '${b.recoveryPercentage.toStringAsFixed(1)}%',
-              aIsBetter:
-                  a.recoveryPercentage >= b.recoveryPercentage,
+              valueA: '${a.recoveryPercentage.toStringAsFixed(1)}%',
+              valueB: '${b.recoveryPercentage.toStringAsFixed(1)}%',
+              aIsBetter: a.recoveryPercentage >= b.recoveryPercentage,
               lowerIsBetter: false,
               hasData: a.totalExpenses > 0 || b.totalExpenses > 0,
             ),
           ],
         ),
         const SizedBox(height: AppTheme.spacingMD),
-
         _ComparisonCard(
           title: 'Cost Efficiency',
           rows: [
@@ -367,23 +424,17 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
             ),
             _ComparisonRow(
               label: 'Purchase Cost per Bird',
-              valueA: CurrencyFormatter.formatFull(
-                  a.flock.costPerBird),
-              valueB: CurrencyFormatter.formatFull(
-                  b.flock.costPerBird),
-              aIsBetter:
-                  a.flock.costPerBird <= b.flock.costPerBird,
+              valueA: CurrencyFormatter.formatFull(a.flock.costPerBird),
+              valueB: CurrencyFormatter.formatFull(b.flock.costPerBird),
+              aIsBetter: a.flock.costPerBird <= b.flock.costPerBird,
               lowerIsBetter: true,
               hasData: true,
             ),
             _ComparisonRow(
               label: 'Initial Flock Size',
-              valueA:
-                  '${a.flock.initialBirdCount} birds',
-              valueB:
-                  '${b.flock.initialBirdCount} birds',
-              aIsBetter: a.flock.initialBirdCount >=
-                  b.flock.initialBirdCount,
+              valueA: '${a.flock.initialBirdCount} birds',
+              valueB: '${b.flock.initialBirdCount} birds',
+              aIsBetter: a.flock.initialBirdCount >= b.flock.initialBirdCount,
               lowerIsBetter: false,
               hasData: true,
               neutral: true,
@@ -391,16 +442,13 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
           ],
         ),
         const SizedBox(height: AppTheme.spacingMD),
-
         _ComparisonCard(
           title: 'Flock Health',
           rows: [
             _ComparisonRow(
               label: 'Mortality Rate',
-              valueA:
-                  '${a.mortalityRate.toStringAsFixed(1)}%',
-              valueB:
-                  '${b.mortalityRate.toStringAsFixed(1)}%',
+              valueA: '${a.mortalityRate.toStringAsFixed(1)}%',
+              valueB: '${b.mortalityRate.toStringAsFixed(1)}%',
               aIsBetter: a.mortalityRate <= b.mortalityRate,
               lowerIsBetter: true,
               hasData: a.mortalityCount > 0 || b.mortalityCount > 0,
@@ -417,8 +465,7 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
               label: 'Current Birds',
               valueA: '${a.flock.birdCount} birds',
               valueB: '${b.flock.birdCount} birds',
-              aIsBetter:
-                  a.flock.birdCount >= b.flock.birdCount,
+              aIsBetter: a.flock.birdCount >= b.flock.birdCount,
               lowerIsBetter: false,
               hasData: true,
               neutral: true,
@@ -426,21 +473,15 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
           ],
         ),
         const SizedBox(height: AppTheme.spacingMD),
-
         _ComparisonCard(
           title: 'Feed & Growth',
           rows: [
             _ComparisonRow(
               label: 'Feed Conversion Ratio',
-              valueA: a.fcr > 0
-                  ? a.fcr.toStringAsFixed(2)
-                  : 'No data',
-              valueB: b.fcr > 0
-                  ? b.fcr.toStringAsFixed(2)
-                  : 'No data',
-              aIsBetter: a.fcr > 0 && b.fcr > 0
-                  ? a.fcr <= b.fcr
-                  : a.fcr > 0,
+              valueA: a.fcr > 0 ? a.fcr.toStringAsFixed(2) : 'No data',
+              valueB: b.fcr > 0 ? b.fcr.toStringAsFixed(2) : 'No data',
+              aIsBetter:
+                  a.fcr > 0 && b.fcr > 0 ? a.fcr <= b.fcr : a.fcr > 0,
               lowerIsBetter: true,
               hasData: a.fcr > 0 || b.fcr > 0,
             ),
@@ -457,8 +498,7 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
               label: 'Records Logged',
               valueA: '${a.recordCount} days',
               valueB: '${b.recordCount} days',
-              aIsBetter:
-                  a.recordCount >= b.recordCount,
+              aIsBetter: a.recordCount >= b.recordCount,
               lowerIsBetter: false,
               hasData: true,
               neutral: true,
@@ -466,8 +506,6 @@ class _BatchComparisonScreenState extends State<BatchComparisonScreen> {
           ],
         ),
         const SizedBox(height: AppTheme.spacingLG),
-
-        // ── Insight summary ──────────────────────────────────────────────
         _InsightSummary(statsA: a, statsB: b),
         const SizedBox(height: AppTheme.spacingLG),
       ],
@@ -527,10 +565,7 @@ class _WinnerBanner extends StatelessWidget {
       padding: const EdgeInsets.all(AppTheme.spacingMD),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            winnerColor,
-            winnerColor.withValues(alpha: 0.7),
-          ],
+          colors: [winnerColor, winnerColor.withValues(alpha: 0.7)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -544,24 +579,16 @@ class _WinnerBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Better Performing Batch',
-                  style: AppTheme.bodySmall
-                      .copyWith(color: Colors.white70),
-                ),
-                Text(
-                  winnerName,
-                  style: AppTheme.headingSmall.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Text('Better Performing Batch',
+                    style:
+                        AppTheme.bodySmall.copyWith(color: Colors.white70)),
+                Text(winnerName,
+                    style: AppTheme.headingSmall.copyWith(
+                        color: Colors.white, fontWeight: FontWeight.bold)),
                 if (profit > 0)
-                  Text(
-                    'Profit: ${CurrencyFormatter.formatCompact(profit)}',
-                    style: AppTheme.bodySmall
-                        .copyWith(color: Colors.white70),
-                  ),
+                  Text('Profit: ${CurrencyFormatter.formatCompact(profit)}',
+                      style: AppTheme.bodySmall
+                          .copyWith(color: Colors.white70)),
               ],
             ),
           ),
@@ -577,8 +604,7 @@ class _ComparisonHeader extends StatelessWidget {
   final _BatchStats statsA;
   final _BatchStats statsB;
 
-  const _ComparisonHeader(
-      {required this.statsA, required this.statsB});
+  const _ComparisonHeader({required this.statsA, required this.statsB});
 
   @override
   Widget build(BuildContext context) {
@@ -592,16 +618,13 @@ class _ComparisonHeader extends StatelessWidget {
               color: AppTheme.primaryColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(AppTheme.radiusSM),
             ),
-            child: Text(
-              statsA.flock.name,
-              style: AppTheme.bodySmall.copyWith(
-                color: AppTheme.primaryColor,
-                fontWeight: FontWeight.w700,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: Text(statsA.flock.name,
+                style: AppTheme.bodySmall.copyWith(
+                    color: AppTheme.primaryColor,
+                    fontWeight: FontWeight.w700),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
           ),
         ),
         const SizedBox(width: 8),
@@ -612,16 +635,13 @@ class _ComparisonHeader extends StatelessWidget {
               color: AppTheme.secondaryColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(AppTheme.radiusSM),
             ),
-            child: Text(
-              statsB.flock.name,
-              style: AppTheme.bodySmall.copyWith(
-                color: AppTheme.secondaryColor,
-                fontWeight: FontWeight.w700,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: Text(statsB.flock.name,
+                style: AppTheme.bodySmall.copyWith(
+                    color: AppTheme.secondaryColor,
+                    fontWeight: FontWeight.w700),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
           ),
         ),
       ],
@@ -635,10 +655,7 @@ class _ComparisonCard extends StatelessWidget {
   final String title;
   final List<_ComparisonRow> rows;
 
-  const _ComparisonCard({
-    required this.title,
-    required this.rows,
-  });
+  const _ComparisonCard({required this.title, required this.rows});
 
   @override
   Widget build(BuildContext context) {
@@ -651,8 +668,8 @@ class _ComparisonCard extends StatelessWidget {
           Text(title, style: AppTheme.headingSmall),
           const SizedBox(height: AppTheme.spacingMD),
           ...rows.map((row) => Padding(
-                padding: const EdgeInsets.only(
-                    bottom: AppTheme.spacingSM),
+                padding:
+                    const EdgeInsets.only(bottom: AppTheme.spacingSM),
                 child: row,
               )),
         ],
@@ -700,28 +717,23 @@ class _ComparisonRow extends StatelessWidget {
 
     return Container(
       padding: highlight
-          ? const EdgeInsets.symmetric(
-              vertical: 6, horizontal: 8)
+          ? const EdgeInsets.symmetric(vertical: 6, horizontal: 8)
           : EdgeInsets.zero,
       decoration: highlight
           ? BoxDecoration(
               color: AppTheme.backgroundColor,
-              borderRadius:
-                  BorderRadius.circular(AppTheme.radiusSM),
+              borderRadius: BorderRadius.circular(AppTheme.radiusSM),
             )
           : null,
       child: Row(
         children: [
           SizedBox(
             width: 140,
-            child: Text(
-              label,
-              style: AppTheme.bodySmall.copyWith(
-                fontWeight: highlight
-                    ? FontWeight.w700
-                    : FontWeight.normal,
-              ),
-            ),
+            child: Text(label,
+                style: AppTheme.bodySmall.copyWith(
+                    fontWeight: highlight
+                        ? FontWeight.w700
+                        : FontWeight.normal)),
           ),
           Expanded(
             child: Row(
@@ -730,16 +742,14 @@ class _ComparisonRow extends StatelessWidget {
                 if (!neutral && hasData && aIsBetter)
                   const Icon(Icons.arrow_upward,
                       size: 12, color: AppTheme.successColor),
-                Text(
-                  valueA,
-                  style: AppTheme.bodySmall.copyWith(
-                    color: colorA,
-                    fontWeight: highlight || (!neutral && aIsBetter)
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
+                Text(valueA,
+                    style: AppTheme.bodySmall.copyWith(
+                        color: colorA,
+                        fontWeight:
+                            highlight || (!neutral && aIsBetter)
+                                ? FontWeight.bold
+                                : FontWeight.normal),
+                    textAlign: TextAlign.center),
               ],
             ),
           ),
@@ -750,17 +760,14 @@ class _ComparisonRow extends StatelessWidget {
                 if (!neutral && hasData && !aIsBetter)
                   const Icon(Icons.arrow_upward,
                       size: 12, color: AppTheme.successColor),
-                Text(
-                  valueB,
-                  style: AppTheme.bodySmall.copyWith(
-                    color: colorB,
-                    fontWeight:
-                        highlight || (!neutral && !aIsBetter)
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
+                Text(valueB,
+                    style: AppTheme.bodySmall.copyWith(
+                        color: colorB,
+                        fontWeight:
+                            highlight || (!neutral && !aIsBetter)
+                                ? FontWeight.bold
+                                : FontWeight.normal),
+                    textAlign: TextAlign.center),
               ],
             ),
           ),
@@ -792,13 +799,9 @@ class _FlockSelector extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: AppTheme.bodySmall.copyWith(
-            color: color,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        Text(label,
+            style: AppTheme.bodySmall.copyWith(
+                color: color, fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
         Container(
           padding: const EdgeInsets.symmetric(
@@ -819,11 +822,9 @@ class _FlockSelector extends StatelessWidget {
             items: flocks
                 .map((f) => DropdownMenuItem(
                       value: f,
-                      child: Text(
-                        f.name,
-                        style: AppTheme.bodySmall,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      child: Text(f.name,
+                          style: AppTheme.bodySmall,
+                          overflow: TextOverflow.ellipsis),
                     ))
                 .toList(),
             onChanged: (f) => f != null ? onChanged(f) : null,
@@ -840,14 +841,12 @@ class _InsightSummary extends StatelessWidget {
   final _BatchStats statsA;
   final _BatchStats statsB;
 
-  const _InsightSummary(
-      {required this.statsA, required this.statsB});
+  const _InsightSummary({required this.statsA, required this.statsB});
 
   @override
   Widget build(BuildContext context) {
     final insights = <String>[];
 
-    // Profit insight
     if (statsA.profit != 0 || statsB.profit != 0) {
       final diff = (statsA.profit - statsB.profit).abs();
       final better =
@@ -862,7 +861,6 @@ class _InsightSummary extends StatelessWidget {
       }
     }
 
-    // Mortality insight
     if (statsA.mortalityRate != statsB.mortalityRate) {
       final better = statsA.mortalityRate <= statsB.mortalityRate
           ? statsA
@@ -877,10 +875,8 @@ class _InsightSummary extends StatelessWidget {
       );
     }
 
-    // Cost per bird insight
     if (statsA.costPerBird > 0 && statsB.costPerBird > 0) {
-      final diff =
-          (statsA.costPerBird - statsB.costPerBird).abs();
+      final diff = (statsA.costPerBird - statsB.costPerBird).abs();
       if (diff > 100) {
         final cheaper = statsA.costPerBird <= statsB.costPerBird
             ? statsA
@@ -892,12 +888,9 @@ class _InsightSummary extends StatelessWidget {
       }
     }
 
-    // FCR insight
     if (statsA.fcr > 0 && statsB.fcr > 0) {
-      final better =
-          statsA.fcr <= statsB.fcr ? statsA : statsB;
-      final worse =
-          statsA.fcr <= statsB.fcr ? statsB : statsA;
+      final better = statsA.fcr <= statsB.fcr ? statsA : statsB;
+      final worse = statsA.fcr <= statsB.fcr ? statsB : statsA;
       insights.add(
         '${better.flock.name} converted feed more efficiently '
         '(FCR ${better.fcr.toStringAsFixed(2)} vs ${worse.fcr.toStringAsFixed(2)}).',
@@ -926,8 +919,8 @@ class _InsightSummary extends StatelessWidget {
           const SizedBox(height: AppTheme.spacingMD),
           ...insights.map(
             (insight) => Padding(
-              padding: const EdgeInsets.only(
-                  bottom: AppTheme.spacingSM),
+              padding:
+                  const EdgeInsets.only(bottom: AppTheme.spacingSM),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -942,9 +935,8 @@ class _InsightSummary extends StatelessWidget {
                   ),
                   const SizedBox(width: AppTheme.spacingSM),
                   Expanded(
-                    child: Text(insight,
-                        style: AppTheme.bodySmall),
-                  ),
+                      child: Text(insight,
+                          style: AppTheme.bodySmall)),
                 ],
               ),
             ),

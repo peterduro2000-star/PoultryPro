@@ -15,7 +15,7 @@ if (keyPropertiesFile.exists()) {
 
 android {
     namespace = "com.peterdev.poultrypro"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -39,15 +39,21 @@ android {
     defaultConfig {
         applicationId = "com.peterdev.poultrypro"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
-    buildTypes {
-        release {
-            signingConfig = signingConfigs.getByName("release")
-        }
+   buildTypes {
+    release {
+        signingConfig = signingConfigs.getByName("release")
+        isMinifyEnabled = true
+        isShrinkResources = true
+        proguardFiles(
+            getDefaultProguardFile("proguard-android-optimize.txt"),
+            "proguard-rules.pro"
+        )
+    }
     }
 }
 

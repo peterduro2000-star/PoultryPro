@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../services/sync_service.dart';
 import '../screens/backup_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sync_status_banner.dart';
@@ -19,7 +20,8 @@ class MainNavigationScreen extends StatefulWidget {
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();
 }
 
-class _MainNavigationScreenState extends State<MainNavigationScreen> {
+class _MainNavigationScreenState extends State<MainNavigationScreen>
+    with WidgetsBindingObserver {
   int _selectedIndex = 0;
 
   static const List<Widget> _screens = [
@@ -34,10 +36,24 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Listen for auth to become ready then show nudge
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scheduleBackupNudge();
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      context.read<SyncService>().syncNow();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   void _scheduleBackupNudge() {

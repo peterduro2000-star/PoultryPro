@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../models/flock.dart';
 import '../services/database_service.dart';
+import '../providers/license_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FlockProvider extends ChangeNotifier {
@@ -20,6 +22,9 @@ class FlockProvider extends ChangeNotifier {
   int get totalBirds => _flocks.fold(0, (sum, f) => sum + f.birdCount);
   double get totalInitialCost =>
       _flocks.fold(0.0, (sum, f) => sum + f.initialCost);
+  
+  /// Returns true if the user has reached the free tier limit (1 flock)
+  bool get hasReachedLimit => _flocks.length >= 1;
 
   // ─── Load Flocks ──────────────────────────────────────────────────────────
   Future<void> loadFlocks() async {
@@ -71,6 +76,7 @@ class FlockProvider extends ChangeNotifier {
   /// Creates a new Flock with all required and optional fields from form input.
   /// Generates UUID, startDate, and timestamps automatically.
   Future<void> createFlockFromForm({
+    required BuildContext context,
     required String name,
     required String type,
     required int birdCount,
@@ -83,6 +89,14 @@ class FlockProvider extends ChangeNotifier {
     String? notes,
   }) async {
     try {
+      final isPro = context.read<LicenseProvider>().isPro;
+
+      if (!isPro && _flocks.length >= 1) {
+        _error =
+            'Free tier only allows 1 flock. Upgrade to Pro for unlimited flocks.';
+        notifyListeners();
+        return;
+      }
       final now = DateTime.now().toIso8601String();
       final newFlock = Flock(
         id: const Uuid().v4(),
@@ -121,6 +135,12 @@ class FlockProvider extends ChangeNotifier {
       if (index != -1) {
         _flocks[index] = flock;
       }
+
+      // Keep the selected flock in sync if the updated flock is currently selected.
+      if (_selectedFlock?.id == flock.id) {
+        _selectedFlock = flock;
+      }
+
       notifyListeners();
     } catch (e) {
       _error = 'Failed to update flock: $e';

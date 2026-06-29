@@ -4,7 +4,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../providers/license_provider.dart';
 import '../services/database_service.dart';
+import '../services/feature_gate.dart';
 import '../services/supabase_auth_service.dart';
 
 /// Maps local SQLite table names → Supabase table names.
@@ -103,6 +105,7 @@ enum SyncState { idle, syncing, error }
 class SyncService extends ChangeNotifier {
   final DatabaseService _db;
   final SupabaseAuthService _auth;
+  LicenseProvider? _license;
 
   SyncService({
     DatabaseService? db,
@@ -118,8 +121,10 @@ class SyncService extends ChangeNotifier {
   int _pendingCount = 0;
   bool _disposed = false;
 
-  Timer? _periodicTimer;
+  Timer? _debounceTimer;
   bool _syncInProgress = false;
+
+  static const Duration _debounceInterval = Duration(seconds: 5);
 
   SyncState get state => _state;
   String? get lastError => _lastError;
@@ -129,35 +134,37 @@ class SyncService extends ChangeNotifier {
   bool get hasError => _state == SyncState.error;
   bool get isHealthy => _state == SyncState.idle && _lastError == null;
 
+  void setLicense(LicenseProvider license) {
+    _license = license;
+  }
+
+
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
   /// Call once from main.dart after auth is initialised.
-  /// Starts the periodic background sync (every 3 minutes).
-  void startPeriodicSync({Duration interval = const Duration(minutes: 3)}) {
-    _periodicTimer?.cancel();
-    _periodicTimer = Timer.periodic(interval, (_) => syncNow());
-    debugPrint('SyncService: periodic sync started (${interval.inMinutes}m)');
-  }
-
-  void stopPeriodicSync() {
-    _periodicTimer?.cancel();
-    _periodicTimer = null;
+  /// Triggers an immediate sync. Subsequent syncs are event-driven
+  /// (app resume, manual refresh, or debounced data changes).
+  void startPeriodicSync() {
+    // No periodic timer — sync is now event-driven.
+    debugPrint('SyncService: event-driven sync initialised');
   }
 
   @override
   void dispose() {
     _disposed = true;
-    stopPeriodicSync();
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
   // ─── Public trigger ────────────────────────────────────────────────────────
 
-  /// Triggers a sync cycle. Safe to call multiple times — concurrent
-  /// calls are no-ops while a sync is already in progress.
+  /// Triggers a sync cycle immediately. Safe to call multiple times —
+  /// concurrent calls are no-ops while a sync is already in progress.
   Future<void> syncNow() async {
     if (_syncInProgress) return;
     if (!_auth.isAuthenticated) return;
+    final entitlement = _license?.entitlement;
+    if (entitlement == null || !FeatureGate.canUseCloud(entitlement)) return;
 
     _syncInProgress = true;
     _setState(SyncState.syncing);
@@ -175,6 +182,17 @@ class SyncService extends ChangeNotifier {
       _syncInProgress = false;
       await _refreshPendingCount();
     }
+  }
+
+  /// Debounced sync trigger. Resets a 5-second timer on each call.
+  /// Use this after local data changes so rapid writes only trigger
+  /// one sync cycle.
+  void scheduleSync() {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(_debounceInterval, () {
+      _debounceTimer = null;
+      unawaited(syncNow());
+    });
   }
 
   // ─── Queue processing ──────────────────────────────────────────────────────

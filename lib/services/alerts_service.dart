@@ -34,15 +34,18 @@ class AlertsService {
     required List<DailyRecord> records,
     required List<Stock> stockItems,
     required double recoveryPercentage,
+    bool isPro = false,
   }) {
     final alerts = <FarmAlert>[];
 
     alerts.addAll(_missedRecordAlerts(flock, records));
     alerts.addAll(_mortalitySpikeAlerts(flock, records));
     alerts.addAll(_vaccinationAlerts(flock));
-    alerts.addAll(_breakEvenAlerts(flock, recoveryPercentage));
     alerts.addAll(_lowStockAlerts(flock, stockItems));
-    alerts.addAll(_fcrAlerts(flock, records));
+    if (isPro) {
+      alerts.addAll(_breakEvenAlerts(flock, recoveryPercentage));
+      alerts.addAll(_fcrAlerts(flock, records));
+    }
 
     // Sort: critical first, then warning, then info
     alerts.sort((a, b) => a.level.index.compareTo(b.level.index));

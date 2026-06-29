@@ -1,5 +1,6 @@
 // lib/services/database_service.dart
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
@@ -24,6 +25,10 @@ class PoultryDbException implements Exception {
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
+
+// Top-level callback so providers can listen for data changes
+// without conflicting with the DatabaseService singleton.
+VoidCallback? onDataChanged;
 
 class DatabaseService {
   // Singleton
@@ -110,7 +115,6 @@ class DatabaseService {
         onCreate: _createTables,
         onUpgrade: _onUpgrade,
         onConfigure: _onConfigure,
-        onOpen: _onOpen,
       );
     } catch (e) {
       debugPrint('CRITICAL: Database initialisation crashed: $e');
@@ -123,18 +127,7 @@ class DatabaseService {
   // ─── PRAGMA configuration ───────────────────────────────────────────────────
 
   Future<void> _onConfigure(sqflite.Database db) async {
-    // Foreign keys must be set in onConfigure
     await db.execute('PRAGMA foreign_keys = ON');
-  }
-
-  // Runs after the database is fully open
-  // WAL and other PRAGMAs must NOT go in onConfigure on Android —
-  // they must be set after the DB is open, in onOpen instead.
-  Future<void> _onOpen(sqflite.Database db) async {
-    await db.execute('PRAGMA journal_mode = WAL');
-    await db.execute('PRAGMA synchronous = NORMAL');
-    await db.execute('PRAGMA temp_store = MEMORY');
-    await db.execute('PRAGMA busy_timeout = 8000');
   }
 
   // ─── Timestamp helper ───────────────────────────────────────────────────────
@@ -534,6 +527,8 @@ class DatabaseService {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     });
+
+    onDataChanged?.call();
   }
 
   Future<void> updateTransactional({
@@ -569,18 +564,20 @@ class DatabaseService {
       final updated = await txn.query(table,
           where: 'id = ?', whereArgs: [id], limit: 1);
 
-      await txn.insert(
-        'sync_queue',
-        _buildQueueEntry(
-          table:     table,
-          id:        id,
-          operation: 'update',
-          payload:   updated.first,
-          now:       now,
-        ),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+        await txn.insert(
+          'sync_queue',
+          _buildQueueEntry(
+            table:     table,
+            id:        id,
+            operation: 'update',
+            payload:   updated.first,
+            now:       now,
+          ),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
     });
+
+    onDataChanged?.call();
   }
 
   /// Soft-deletes [id] in [table] and optionally cascades to child tables.
@@ -677,6 +674,8 @@ class DatabaseService {
         }
       }
     });
+
+    onDataChanged?.call();
   }
 
   // ─── Queue entry builder ────────────────────────────────────────────────────
@@ -855,7 +854,7 @@ class DatabaseService {
     return rows.isEmpty ? null : DailyRecord.fromMap(rows.first);
   }
 
-  Future<int> getTotalMortalityByFlock(String flockId) async {
+  Future<double> getTotalMortalityByFlock(String flockId) async {
     final db = await database;
     final rows = await db.rawQuery('''
       SELECT COALESCE(SUM(mortalityCount), 0) AS total
@@ -863,7 +862,7 @@ class DatabaseService {
       WHERE flockId = ?
         AND (deleted = 0 OR deleted IS NULL)
     ''', [flockId]);
-    return (rows.first['total'] as num).toInt();
+    return (rows.first['total'] as num).toDouble();
   }
 
   Future<void> createDailyRecord(DailyRecord record) async {

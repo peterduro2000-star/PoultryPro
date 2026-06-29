@@ -480,7 +480,8 @@ class _ProfitTab extends StatelessWidget {
         // loss-per-bird shows the actual loss already incurred.
         _Card(
           title: 'Per Bird Analysis',
-          subtitle: 'Based on $currentBirds current bird${currentBirds == 1 ? '' : 's'}',
+          subtitle: 'Based on $currentBirds Live bird${currentBirds == 1 ? '' : 's'}'
+              '${flock.initialBirdCount != currentBirds ? ' (started with ${flock.initialBirdCount})' : ''}',
           children: [
             _ProfitRow(
               label: 'Purchase cost per bird',
@@ -1143,7 +1144,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
             ),
             const SizedBox(height: AppTheme.spacingMD),
             DropdownButtonFormField<String>(
-              value: _category,
+              initialValue: _category,
               decoration: AppTheme.inputDecoration('Category'),
               items: ExpenseCategory.all
                   .map((c) => DropdownMenuItem(
@@ -1176,7 +1177,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
             ),
             const SizedBox(height: AppTheme.spacingMD),
             DropdownButtonFormField<String>(
-              value: _paymentMethod,
+              initialValue: _paymentMethod,
               decoration: AppTheme.inputDecoration('Payment Method'),
               items: PaymentMethod.all
                   .map((p) => DropdownMenuItem(
@@ -1286,7 +1287,7 @@ class _AddSaleSheetState extends State<_AddSaleSheet> {
             ),
             const SizedBox(height: AppTheme.spacingMD),
             DropdownButtonFormField<String>(
-              value: _saleType,
+              initialValue: _saleType,
               decoration: AppTheme.inputDecoration('Sale Type'),
               items: SaleType.all
                   .map((t) => DropdownMenuItem(
@@ -1320,7 +1321,7 @@ class _AddSaleSheetState extends State<_AddSaleSheet> {
                 const SizedBox(width: AppTheme.spacingSM),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _unit,
+                    initialValue: _unit,
                     decoration: AppTheme.inputDecoration('Unit'),
                     items: availableUnits
                         .map((u) => DropdownMenuItem(
@@ -1355,7 +1356,7 @@ class _AddSaleSheetState extends State<_AddSaleSheet> {
             ),
             const SizedBox(height: AppTheme.spacingMD),
             DropdownButtonFormField<String>(
-              value: _paymentMethod,
+              initialValue: _paymentMethod,
               decoration: AppTheme.inputDecoration('Payment Method'),
               items: PaymentMethod.all
                   .map((p) => DropdownMenuItem(

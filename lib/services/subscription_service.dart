@@ -1,44 +1,87 @@
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-enum PlanType { free, pro }
-
-class FlockLimitException implements Exception {
-  final String message;
-
-  const FlockLimitException(this.message);
-
-  @override
-  String toString() => message;
-}
+import '../models/subscription_entitlement.dart';
 
 class SubscriptionService {
-  static const String _planKey = 'subscription_plan';
-  static const int freeMaxFlocks = 1;
+  final _client = Supabase.instance.client;
+
   static const String upgradeMessage =
-      'Free plan supports 1 flock. Upgrade to Pro to manage unlimited flocks, advanced reports, reminders, and business insights.';
+      'Upgrade to PoultryPro Plus and unlock unlimited flocks';
 
-  Future<PlanType> getPlan() async {
-    final prefs = await SharedPreferences.getInstance();
-    final value = prefs.getString(_planKey);
-    return PlanType.values.firstWhere(
-      (plan) => plan.name == value,
-      orElse: () => PlanType.free,
-    );
+  static const String proPriceDisplay = '₦5,000';
+
+  static const List<String> freeBenefits = [
+    'Manage 1 flock',
+    'Track basic flock records',
+    'Record expenses and sales',
+    'Backup and restore local data',
+  ];
+
+  static const List<String> proBenefits = [
+    'Unlimited flocks',
+    'Advanced reports',
+    'Reminders & smart alerts',
+    'Cloud backup',
+    'Business insights',
+    'Flock comparison',
+  ];
+
+  Future<SubscriptionEntitlement> loadCurrentEntitlement() async {
+    try {
+      final response = await _client
+          .rpc('get_current_license')
+          .select()
+          .maybeSingle();
+
+      if (response == null) return SubscriptionEntitlement.free;
+      return SubscriptionEntitlement.fromLicenseRow(response);
+    } catch (e) {
+      return SubscriptionEntitlement.free;
+    }
   }
 
-  Future<void> setPlan(PlanType plan) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_planKey, plan.name);
+  Future<bool> checkIfPro(String userId) async {
+    final entitlement = await loadCurrentEntitlement();
+    return entitlement.isPro;
   }
 
-  Future<bool> isPro() async => await getPlan() == PlanType.pro;
+  Future<void> activateSubscription({
+    required String userId,
+    required String reference,
+    required String provider,
+    required int amount,
+  }) async {
 
-  Future<int?> maxFlocks() async {
-    return await isPro() ? null : freeMaxFlocks;
-  }
+    final now = DateTime.now();
+    final expiry = DateTime(now.year + 1, now.month, now.day);
 
-  Future<bool> canCreateFlock(int currentFlockCount) async {
-    final limit = await maxFlocks();
-    return limit == null || currentFlockCount < limit;
+
+    await _client.rpc('activate_license_from_iap', params: {
+      'p_user_id': userId,
+      'p_tier': 'pro',
+      'p_expires_at': expiry.toIso8601String(),
+      'p_provider': provider,
+      'p_order_id': reference,
+      'p_purchase_token': reference,
+      'p_subscription_id': 'poultry_pro_yearly',
+    });
+
+
+    await _client.from('payments').insert({
+
+      'user_id': userId,
+
+      'provider': provider,
+
+      'reference': reference,
+
+      'amount': amount,
+
+      'status': 'success',
+
+      'created_at': now.toIso8601String(),
+
+    });
+
   }
 }
