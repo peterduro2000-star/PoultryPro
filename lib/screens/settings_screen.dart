@@ -9,11 +9,34 @@ import '../theme/app_theme.dart';
 import '../providers/auth_provider.dart';
 import '../providers/license_provider.dart';
 import '../services/database_service.dart';
+import '../services/sync_service.dart';
 import 'upgrade_screen.dart';
 import 'backup_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
+
+  Future<void> _syncNow(BuildContext context) async {
+    try {
+      await context.read<SyncService>().syncNow();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sync complete'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Sync failed: $e'),
+              backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
 
   Future<void> _backupData(BuildContext context) async {
     try {
@@ -356,14 +379,13 @@ class SettingsScreen extends StatelessWidget {
 
                   final user = Supabase.instance.client.auth.currentUser;
 
-              
-if (user != null && user.isAnonymous) {
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const BackupScreen()),
-  );
-  return;
-}
+             if (user != null && user.isAnonymous) {
+   Navigator.push(
+     context,
+     MaterialPageRoute(builder: (_) => const BackupScreen()),
+   );
+   return;
+ }
 
                   Navigator.push(
                     context,
@@ -375,6 +397,91 @@ if (user != null && user.isAnonymous) {
                 },
                 child: Text(isAnonymous ? 'Sign In' : 'Upgrade'),
               ),
+      ),
+    );
+  }
+
+  Widget _buildCloudSyncCard(BuildContext context) {
+    final isPro = context.watch<LicenseProvider>().isPro;
+    final sync = context.watch<SyncService>();
+
+    if (!isPro) {
+      return Card(
+        color: Colors.grey.shade50,
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: AppTheme.textSecondary.withValues(alpha: 0.1),
+            child: Icon(Icons.cloud_off_outlined,
+                color: AppTheme.textSecondary, size: 20),
+          ),
+          title: Text(
+            'Cloud Sync',
+            style: AppTheme.bodyLarge
+                .copyWith(fontWeight: FontWeight.w600, color: Colors.grey),
+          ),
+          subtitle: const Text(
+            'Upgrade to Pro for automatic cloud backup',
+            style: TextStyle(color: Colors.grey),
+          ),
+          trailing: Icon(Icons.lock_outline, color: Colors.grey, size: 20),
+        ),
+      );
+    }
+
+    final lastSynced = sync.lastSyncedAt != null
+        ? '${sync.lastSyncedAt!.day}/${sync.lastSyncedAt!.month}/${sync.lastSyncedAt!.year} '
+          '${sync.lastSyncedAt!.hour}:${sync.lastSyncedAt!.minute.toString().padLeft(2, '0')}'
+        : 'Never';
+    final pendingCount = sync.pendingCount;
+
+    return Card(
+      color: AppTheme.primaryColor.withValues(alpha: 0.04),
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.spacingMD),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.cloud_done_outlined,
+                    color: AppTheme.primaryColor, size: 20),
+                const SizedBox(width: AppTheme.spacingSM),
+                Text('Cloud Sync', style: AppTheme.headingSmall),
+              ],
+            ),
+            const SizedBox(height: AppTheme.spacingSM),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Last synced: $lastSynced',
+                      style: AppTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      pendingCount == 0
+                          ? 'All changes backed up'
+                          : '$pendingCount change${pendingCount == 1 ? '' : 's'} pending',
+                      style: AppTheme.bodySmall.copyWith(
+                        color: pendingCount > 0
+                            ? AppTheme.warningColor
+                            : AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+                TextButton.icon(
+                  onPressed: () => _syncNow(context),
+                  icon: const Icon(Icons.sync, size: 16),
+                  label: const Text('Sync now'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -406,6 +513,28 @@ if (user != null && user.isAnonymous) {
                 ),
                 const SizedBox(height: AppTheme.spacingMD),
                 _buildProCard(context, auth),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppTheme.spacingLG),
+
+          // ── Cloud Sync Section ────────────────────────────
+          Container(
+            decoration: AppTheme.cardDecoration,
+            padding: const EdgeInsets.all(AppTheme.spacingMD),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.cloud_done_outlined,
+                        color: AppTheme.secondaryColor, size: 18),
+                    const SizedBox(width: AppTheme.spacingSM),
+                    Text('Cloud Sync', style: AppTheme.headingSmall),
+                  ],
+                ),
+                const SizedBox(height: AppTheme.spacingMD),
+                _buildCloudSyncCard(context),
               ],
             ),
           ),

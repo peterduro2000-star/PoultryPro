@@ -113,6 +113,15 @@ class _UpgradeScreenState extends State<UpgradeScreen> {
   }
 
   Future<void> _performUpgrade(User user) async {
+    debugPrint(
+      'Current user: ${Supabase.instance.client.auth.currentUser?.id}',
+    );
+    debugPrint(
+      'Email: ${Supabase.instance.client.auth.currentUser?.email}',
+    );
+    debugPrint(
+      'Anonymous: ${Supabase.instance.client.auth.currentUser?.isAnonymous}',
+    );
     if (user.email == null) {
       _showError('Email not available. Please verify your account first.');
       return;
@@ -160,14 +169,19 @@ class _UpgradeScreenState extends State<UpgradeScreen> {
         return;
       }
 
-      // The edge function's DB write and this read can still race
-      // slightly even after verification succeeds — retry a few
-      // times instead of guessing a single fixed delay.
       bool subscriptionConfirmed = false;
       for (int attempt = 0; attempt < 3; attempt++) {
-         await context.read<LicenseProvider>().loadEntitlement();
-         if (!mounted) return;
-         if (context.read<LicenseProvider>().isPro) {
+        await context.read<LicenseProvider>().loadEntitlement();
+        if (!mounted) return;
+        final lp = context.read<LicenseProvider>();
+        debugPrint(
+          '=== verify attempt ${attempt + 1}: '
+          'tier=${lp.entitlement?.tier}, '
+          'isActive=${lp.entitlement?.isActive}, '
+          'expiresAt=${lp.entitlement?.expiresAt}, '
+          'isPro=${lp.isPro}',
+        );
+        if (lp.isPro) {
           subscriptionConfirmed = true;
           break;
         }
@@ -176,13 +190,18 @@ class _UpgradeScreenState extends State<UpgradeScreen> {
 
       if (!mounted) return;
 
+      if (!subscriptionConfirmed) {
+        _showError(
+          'Payment processed but license activation failed.\n'
+          'Please take a screenshot and contact support.',
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            subscriptionConfirmed
-                ? '🎉 Welcome to Poultry Pro!'
-                : 'Payment confirmed! Your Pro features will appear shortly.',
-          ),
+        const SnackBar(
+          content: Text('🎉 Welcome to Poultry Pro!'),
           backgroundColor: AppTheme.successColor,
         ),
       );

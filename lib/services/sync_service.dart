@@ -138,28 +138,27 @@ class SyncService extends ChangeNotifier {
     _license = license;
   }
 
-
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
   /// Call once from main.dart after auth is initialised.
-  /// Triggers an immediate sync. Subsequent syncs are event-driven
-  /// (app resume, manual refresh, or debounced data changes).
   void startPeriodicSync() {
-    // No periodic timer — sync is now event-driven.
     debugPrint('SyncService: event-driven sync initialised');
+  }
+
+  void stopPeriodicSync() {
+    _debounceTimer?.cancel();
+    _debounceTimer = null;
   }
 
   @override
   void dispose() {
     _disposed = true;
-    _debounceTimer?.cancel();
+    stopPeriodicSync();
     super.dispose();
   }
 
   // ─── Public trigger ────────────────────────────────────────────────────────
 
-  /// Triggers a sync cycle immediately. Safe to call multiple times —
-  /// concurrent calls are no-ops while a sync is already in progress.
   Future<void> syncNow() async {
     if (_syncInProgress) return;
     if (!_auth.isAuthenticated) return;
@@ -184,9 +183,6 @@ class SyncService extends ChangeNotifier {
     }
   }
 
-  /// Debounced sync trigger. Resets a 5-second timer on each call.
-  /// Use this after local data changes so rapid writes only trigger
-  /// one sync cycle.
   void scheduleSync() {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(_debounceInterval, () {
@@ -243,7 +239,7 @@ class SyncService extends ChangeNotifier {
         await _db.markRecordSynced(
           table:    tableName,
           id:       payload['id'] as String,
-          serverId: payload['id'] as String, // same id — we control the PK
+          serverId: payload['id'] as String,
         );
       } catch (e) {
         debugPrint('SyncService: failed entry $queueId — $e');
@@ -251,7 +247,6 @@ class SyncService extends ChangeNotifier {
       }
     }
 
-    // Housekeeping — prune old synced entries weekly
     await _db.pruneCompletedQueueEntries();
   }
 
@@ -271,8 +266,6 @@ class SyncService extends ChangeNotifier {
 
   // ─── Column name translation ───────────────────────────────────────────────
 
-  /// Converts a local camelCase payload map to Supabase snake_case,
-  /// adds user_id, and strips SQLite-only fields.
   Map<String, dynamic> _toSnakeCase(
     String table,
     Map<String, dynamic> local,
@@ -281,14 +274,12 @@ class SyncService extends ChangeNotifier {
     final columnRenames = _columnMap[table] ?? {};
     final result = <String, dynamic>{'user_id': userId};
 
-    // Fields we never send to Supabase
     const stripFields = {'syncStatus', 'serverId', 'lastSyncedAt', 'version'};
 
     for (final entry in local.entries) {
       if (stripFields.contains(entry.key)) continue;
       final supabaseKey = columnRenames[entry.key] ?? entry.key;
 
-      // Convert SQLite integers back to booleans for Supabase boolean columns
       dynamic value = entry.value;
       if (entry.key == 'deleted' && value is int) {
         value = value == 1;

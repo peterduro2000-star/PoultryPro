@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/subscription_entitlement.dart';
@@ -33,9 +34,27 @@ class SubscriptionService {
           .select()
           .maybeSingle();
 
-      if (response == null) return SubscriptionEntitlement.free;
-      return SubscriptionEntitlement.fromLicenseRow(response);
-    } catch (e) {
+      debugPrint(
+        'RPC get_current_license response: $response',
+      );
+
+      debugPrint('=== SubscriptionService.loadCurrentEntitlement: response=$response');
+
+      if (response == null) {
+        debugPrint('=== SubscriptionService.loadCurrentEntitlement: null → free');
+        return SubscriptionEntitlement.free;
+      }
+      final entitlement = SubscriptionEntitlement.fromLicenseRow(response);
+      debugPrint(
+        '=== SubscriptionService.loadCurrentEntitlement: '
+        'tier=${entitlement.tier}, isActive=${entitlement.isActive}, '
+        'expiresAt=${entitlement.expiresAt}, isPro=${entitlement.isPro}',
+      );
+      return entitlement;
+    } catch (e, st) {
+      debugPrint('=== get_current_license FAILED ===');
+      debugPrint(e.toString());
+      debugPrint(st.toString());
       return SubscriptionEntitlement.free;
     }
   }
@@ -49,12 +68,9 @@ class SubscriptionService {
     required String userId,
     required String reference,
     required String provider,
-    required int amount,
   }) async {
-
     final now = DateTime.now();
     final expiry = DateTime(now.year + 1, now.month, now.day);
-
 
     await _client.rpc('activate_license_from_iap', params: {
       'p_user_id': userId,
@@ -65,23 +81,5 @@ class SubscriptionService {
       'p_purchase_token': reference,
       'p_subscription_id': 'poultry_pro_yearly',
     });
-
-
-    await _client.from('payments').insert({
-
-      'user_id': userId,
-
-      'provider': provider,
-
-      'reference': reference,
-
-      'amount': amount,
-
-      'status': 'success',
-
-      'created_at': now.toIso8601String(),
-
-    });
-
   }
 }

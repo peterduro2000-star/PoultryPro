@@ -88,17 +88,6 @@ serve(async (req) => {
     const reference = paystackData.data.reference;
     const authorization_url = paystackData.data.authorization_url;
 
-    // 💾 Save pending payment (IMPORTANT for security + tracking)
-    await supabase.from("payments").insert({
-      user_id: user.id,
-      reference,
-      amount: amountKobo / 100,
-      currency: "NGN",
-      status: "pending",
-      channel: "paystack",
-      raw_response: paystackData.data,
-    });
-
     return new Response(
       JSON.stringify({
         success: true,

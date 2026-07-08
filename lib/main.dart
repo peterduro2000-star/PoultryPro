@@ -95,10 +95,6 @@ class _AppBootstrapState extends State<_AppBootstrap> {
       final sync = context.read<SyncService>();
       final license = context.read<LicenseProvider>();
 
-      sync.setLicense(license);
-      onDataChanged = () => sync.scheduleSync();
-      await license.loadCachedEntitlement();
-
       await auth.checkFirstLaunch();
 
       await auth.initSession().timeout(
@@ -109,8 +105,12 @@ class _AppBootstrapState extends State<_AppBootstrap> {
       );
 
       if (auth.isAuthenticated) {
+        await license.loadCachedEntitlement();
         sync.startPeriodicSync();
-        unawaited(license.loadEntitlement());
+        unawaited(sync.syncNow());
+        await license.loadEntitlement();
+      } else {
+        await license.clearEntitlement();
       }
     } catch (e) {
       debugPrint('Boot error (non-fatal): $e');

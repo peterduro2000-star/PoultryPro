@@ -57,7 +57,12 @@ class PaystackPaymentService implements PaymentService {
   Future<bool> verifyPayment(String reference) async {
     try {
       final session = Supabase.instance.client.auth.currentSession;
-      if (session == null) return false;
+      if (session == null) {
+        debugPrint('=== PaystackPaymentService.verifyPayment: session is null');
+        return false;
+      }
+
+      debugPrint('=== PaystackPaymentService.verifyPayment: reference=$reference');
 
       final response = await Supabase.instance.client.functions.invoke(
         'verify-paystack',
@@ -65,11 +70,22 @@ class PaystackPaymentService implements PaymentService {
         headers: {'Authorization': 'Bearer ${session.accessToken}'},
       );
 
-      debugPrint('=== PaystackPaymentService: verify status=${response.status}');
+      debugPrint('=== PaystackPaymentService.verifyPayment: httpStatus=${response.status}');
+      debugPrint('=== PaystackPaymentService.verifyPayment: data=${response.data}');
 
-      return response.status == 200;
+      final bool httpOk = response.status == 200;
+
+      if (response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        final bool bodyOk = data['success'] != false;
+        debugPrint('=== PaystackPaymentService.verifyPayment: bodySuccess=$bodyOk');
+        return httpOk && bodyOk;
+      }
+
+      return httpOk;
     } catch (e, st) {
-      debugPrint('=== PaystackPaymentService verifyPayment ERROR: $e\n$st');
+      debugPrint('=== PaystackPaymentService.verifyPayment ERROR: $e');
+      debugPrint('$st');
       return false;
     }
   }

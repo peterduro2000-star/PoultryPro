@@ -39,20 +39,6 @@ serve(async (req) => {
       });
     }
 
-    // Prevent duplicate processing
-    const { data: existingPayment } = await supabase
-      .from("payments")
-      .select("*")
-      .eq("reference", reference)
-      .maybeSingle();
-
-    if (existingPayment) {
-      return new Response(
-        JSON.stringify({ message: "Already processed" }),
-        { status: 200, headers: corsHeaders }
-      );
-    }
-
     // Verify with Paystack
     const res = await fetch(
       `https://api.paystack.co/transaction/verify/${reference}`,
@@ -62,6 +48,8 @@ serve(async (req) => {
     );
 
     const data = await res.json();
+
+    console.log("PAYSTACK VERIFY:", JSON.stringify(data, null, 2));
 
     if (!data.status || data.data.status !== "success") {
       return new Response(
@@ -75,15 +63,6 @@ serve(async (req) => {
     const expiry = new Date(
       Date.now() + 365 * 24 * 60 * 60 * 1000
     ).toISOString();
-
-    await supabase.from("payments").insert({
-      user_id: user.id,
-      provider: "paystack",
-      reference: payment.reference,
-      amount: payment.amount,
-      status: "success",
-      created_at: now,
-    });
 
     const rpcRes = await fetch(
       `${SUPABASE_URL}/rest/v1/rpc/activate_license_from_iap`,
