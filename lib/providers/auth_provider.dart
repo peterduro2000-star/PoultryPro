@@ -172,6 +172,11 @@ class AuthProvider extends ChangeNotifier {
 
   String _friendlyError(Object e) {
     final msg = e.toString().toLowerCase();
+    if (msg.contains('already registered') || msg.contains('already exists') ||
+        (msg.contains('email') && msg.contains('taken'))) {
+      return 'This email is already linked to another PoultryPro account. '
+          'Please use a different email, or contact support if this is your account.';
+    }
     if (msg.contains('invalid') && msg.contains('email')) {
       return 'Enter a valid email address.';
     }

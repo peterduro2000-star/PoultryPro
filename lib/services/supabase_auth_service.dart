@@ -37,30 +37,36 @@ class SupabaseAuthService {
 
   // ─── Email OTP upgrade ─────────────────────────────────────────────────────
 
-  /// Sends a 6-digit OTP to [email].
+  /// Sends a confirmation OTP to [email] to link it to the CURRENT
+  /// anonymous session. Unlike signInWithOtp, this does not create or
+  /// sign into a separate account — it requests to attach [email] to
+  /// the existing (anonymous) user id.
   Future<void> sendEmailOtp(String email) async {
     try {
-      await _client.auth.signInWithOtp(
-        email: email,
-        shouldCreateUser: true,
+      await _client.auth.updateUser(
+        UserAttributes(email: email),
       );
-      debugPrint('Auth: OTP sent to $email');
+      debugPrint('Auth: email-link OTP sent to $email for user $currentUserId');
+    } on AuthException catch (e) {
+      debugPrint('Auth: updateUser failed: ${e.message}');
+      rethrow;
     } catch (e) {
       debugPrint('Auth: OTP send failed: $e');
       rethrow;
     }
   }
 
-  /// Verifies the OTP and links the email to the anonymous account.
-  /// The user ID stays the same — all existing data is preserved.
+  /// Verifies the OTP for an in-progress email link/change.
+  /// On success, the SAME user id keeps its data — Supabase flips
+  /// `is_anonymous` to false rather than switching accounts.
   Future<void> verifyEmailOtp(String email, String token) async {
     try {
       await _client.auth.verifyOTP(
         email: email,
         token: token,
-        type: OtpType.email,
+        type: OtpType.emailChange,
       );
-      debugPrint('Auth: email verified for $currentUserId');
+      debugPrint('Auth: email linked for $currentUserId');
     } catch (e) {
       debugPrint('Auth: OTP verification failed: $e');
       rethrow;
