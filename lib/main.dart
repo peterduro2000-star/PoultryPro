@@ -104,7 +104,15 @@ class _AppBootstrapState extends State<_AppBootstrap> {
         },
       );
 
+      debugPrint('Authenticated: ${auth.isAuthenticated}');
+      debugPrint('UserId: ${auth.userId}');
+      debugPrint(
+        'Supabase user: ${Supabase.instance.client.auth.currentUser?.email}',
+      );
+
       if (auth.isAuthenticated) {
+        debugPrint("MAIN user before entitlement = ${Supabase.instance.client.auth.currentUser?.id}");
+        debugPrint("MAIN email before entitlement = ${Supabase.instance.client.auth.currentUser?.email}");
         await license.loadCachedEntitlement();
         sync.startPeriodicSync();
         unawaited(sync.syncNow());

@@ -160,6 +160,7 @@ class SyncService extends ChangeNotifier {
   // ─── Public trigger ────────────────────────────────────────────────────────
 
   Future<void> syncNow() async {
+    debugPrint("SYNC user = ${Supabase.instance.client.auth.currentUser?.id}");
     if (_syncInProgress) return;
     if (!_auth.isAuthenticated) return;
     final entitlement = _license?.entitlement;

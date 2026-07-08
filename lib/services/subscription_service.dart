@@ -29,10 +29,14 @@ class SubscriptionService {
 
   Future<SubscriptionEntitlement> loadCurrentEntitlement() async {
     try {
+      debugPrint("RPC current user = ${_client.auth.currentUser?.id}");
+      debugPrint("RPC current email = ${_client.auth.currentUser?.email}");
       final response = await _client
           .rpc('get_current_license')
           .select()
           .maybeSingle();
+
+      debugPrint("RPC returned row user_id = ${response?['user_id']}");
 
       debugPrint(
         'RPC get_current_license response: $response',
