@@ -31,12 +31,20 @@ class SubscriptionService {
     try {
       debugPrint("RPC current user = ${_client.auth.currentUser?.id}");
       debugPrint("RPC current email = ${_client.auth.currentUser?.email}");
-      final response = await _client
+      final rows = await _client
           .rpc('get_current_license')
-          .select()
-          .maybeSingle();
+          .select();
 
-      debugPrint("RPC returned row user_id = ${response?['user_id']}");
+      debugPrint('RPC rows: $rows');
+
+      if (rows is List && rows.isEmpty) {
+        debugPrint('No license found for current user');
+        return SubscriptionEntitlement.free;
+      }
+
+      final response = (rows as List).first as Map<String, dynamic>;
+
+      debugPrint("RPC returned row user_id = ${response['user_id']}");
 
       debugPrint(
         'RPC get_current_license response: $response',
@@ -44,10 +52,6 @@ class SubscriptionService {
 
       debugPrint('=== SubscriptionService.loadCurrentEntitlement: response=$response');
 
-      if (response == null) {
-        debugPrint('=== SubscriptionService.loadCurrentEntitlement: null → free');
-        return SubscriptionEntitlement.free;
-      }
       final entitlement = SubscriptionEntitlement.fromLicenseRow(response);
       debugPrint(
         '=== SubscriptionService.loadCurrentEntitlement: '
