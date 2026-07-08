@@ -1143,6 +1143,27 @@ class DatabaseService {
     }
   }
 
+  Future<bool> hasAnyBusinessRecords() async {
+    final db = await database;
+    for (final table in allowedTables) {
+      final count = await db.rawQuery('SELECT COUNT(*) as c FROM $table');
+      final n = (count.first['c'] as int?) ?? 0;
+      if (n > 0) return true;
+    }
+    return false;
+  }
+
+  Future<void> clearSyncQueue() async {
+    final db = await database;
+    try {
+      await db.delete('sync_queue');
+      debugPrint('Sync queue cleared');
+    } catch (e) {
+      debugPrint('Clear queue error: $e');
+      rethrow;
+    }
+  }
+
   Future<void> close() async {
     final db = _database;
     if (db != null && db.isOpen) {

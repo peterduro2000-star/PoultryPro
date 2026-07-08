@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import '../services/database_service.dart';
 import '../services/sync_service.dart';
 import 'upgrade_screen.dart';
 import 'backup_screen.dart';
+import 'sign_in_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -369,36 +371,148 @@ class SettingsScreen extends StatelessWidget {
           isPro
               ? 'Subscription Active'
               : isAnonymous
-                  ? 'Sign in to unlock Pro features'
+                  ? 'Protect your data or sign in to an existing account'
                   : 'Manage your subscription',
         ),
         trailing: isPro
             ? const Icon(Icons.check_circle, color: Colors.green)
-            : ElevatedButton(
-                onPressed: () async {
-
-                  final user = Supabase.instance.client.auth.currentUser;
-
-             if (user != null && user.isAnonymous) {
-   Navigator.push(
-     context,
-     MaterialPageRoute(builder: (_) => const BackupScreen()),
-   );
-   return;
- }
-
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const UpgradeScreen(),
-                    ),
-                  );
-
-                },
-                child: Text(isAnonymous ? 'Sign In' : 'Upgrade'),
-              ),
+            : isAnonymous
+                ? _buildAnonymousActions(context)
+                : ElevatedButton(
+                    onPressed: () async {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const UpgradeScreen(),
+                        ),
+                      );
+                    },
+                    child: const Text('Upgrade'),
+                  ),
       ),
     );
+  }
+
+  Widget _buildAnonymousActions(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 140,
+          child: ElevatedButton(
+            onPressed: () async {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const BackupScreen()),
+              );
+            },
+            style: AppTheme.primaryButtonStyle.copyWith(
+              minimumSize: const WidgetStatePropertyAll(Size(double.infinity, 36)),
+            ),
+            child: const Text('Protect My Data', style: TextStyle(fontSize: 12)),
+          ),
+        ),
+        const SizedBox(height: 4),
+        SizedBox(
+          width: 140,
+          child: TextButton(
+            onPressed: () => _attemptSignIn(context),
+            child: const Text('Sign In', style: TextStyle(fontSize: 12)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _attemptSignIn(BuildContext context) async {
+    final db = DatabaseService();
+    final sync = context.read<SyncService>();
+    final license = context.read<LicenseProvider>();
+
+    final hasBusinessData = await db.hasAnyBusinessRecords();
+    final hasPendingSync = sync.pendingCount > 0;
+
+    if (!hasBusinessData && !hasPendingSync) {
+      await _startSignInFlow(context);
+      return;
+    }
+
+    String message = 'This device already contains Poultry Pro data.\n\n'
+        'Signing in to another account will replace the data stored on '
+        'this device with the selected account\'s cloud data.\n\n'
+        'Any local data that has not been backed up will be permanently lost.\n\n'
+        'Continue?';
+    String title = 'Switch Account?';
+
+    if (hasPendingSync) {
+      message = 'You have local changes that have not yet been backed up.\n\n'
+          'Signing in now will permanently delete those unsynced changes.\n\n'
+          'Continue?';
+      title = 'Unsaved Changes';
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _startSignInFlow(context);
+    }
+  }
+
+  Future<void> _startSignInFlow(BuildContext context) async {
+    final sync = context.read<SyncService>();
+    final license = context.read<LicenseProvider>();
+    final auth = context.read<AuthProvider>();
+
+    try {
+      sync.stopPeriodicSync();
+
+      while (sync.isSyncing) {
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
+      await sync.syncNow();
+
+      await DatabaseService().clearAllData();
+      await DatabaseService().clearSyncQueue();
+      await license.clearEntitlement();
+
+      await auth.signOut();
+
+      final signedIn = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(builder: (_) => const SignInScreen()),
+      );
+
+      if (signedIn == true && context.mounted) {
+        await license.loadEntitlement();
+        sync.startPeriodicSync();
+        unawaited(sync.downloadCloudData());
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sign in failed: $e'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildCloudSyncCard(BuildContext context) {

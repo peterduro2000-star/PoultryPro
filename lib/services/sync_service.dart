@@ -183,6 +183,56 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  Future<void> downloadCloudData() async {
+    if (_syncInProgress) return;
+    final userId = _auth.currentUserId;
+    if (userId == null) return;
+
+    _syncInProgress = true;
+    _setState(SyncState.syncing);
+
+    try {
+      final data = <String, dynamic>{};
+
+      for (final entry in _supabaseTables.entries) {
+        final localTable = entry.key;
+        final supabaseTable = entry.value;
+
+        final rows = await _client
+            .from(supabaseTable)
+            .select()
+            .eq('user_id', userId);
+
+        final localRows = (rows is List)
+            ? rows
+                .whereType<Map<String, dynamic>>()
+                .map((r) => _toCamelCase(localTable, r))
+                .toList()
+            : <Map<String, dynamic>>[];
+
+        data[localTable] = localRows;
+      }
+
+      await _db.importAllFromJson({
+        'version': '4.0',
+        'timestamp': DateTime.now().toIso8601String(),
+        'appVersion': 'poultry_pro_v4',
+        'data': data,
+      });
+
+      _lastSyncedAt = DateTime.now();
+      _lastError = null;
+      _setState(SyncState.idle);
+    } catch (e, st) {
+      _lastError = e.toString();
+      debugPrint('SyncService download error: $e\n$st');
+      _setState(SyncState.error);
+    } finally {
+      _syncInProgress = false;
+      await _refreshPendingCount();
+    }
+  }
+
   void scheduleSync() {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(_debounceInterval, () {
@@ -286,6 +336,29 @@ class SyncService extends ChangeNotifier {
       }
 
       result[supabaseKey] = value;
+    }
+
+    return result;
+  }
+
+  Map<String, dynamic> _toCamelCase(
+    String table,
+    Map<String, dynamic> supabase,
+  ) {
+    final columnRenames = _columnMap[table] ?? {};
+    final reverseRenames = <String, String>{};
+    for (final entry in columnRenames.entries) {
+      reverseRenames[entry.value] = entry.key;
+    }
+
+    final result = <String, dynamic>{};
+    for (final entry in supabase.entries) {
+      final localKey = reverseRenames[entry.key] ?? entry.key;
+      dynamic value = entry.value;
+      if (localKey == 'deleted' && value is bool) {
+        value = value ? 1 : 0;
+      }
+      result[localKey] = value;
     }
 
     return result;

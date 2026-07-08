@@ -79,6 +79,39 @@ class SupabaseAuthService {
     await _client.auth.signOut();
   }
 
+  Future<void> sendSignInOtp(String email) async {
+    try {
+      await _client.auth.signInWithOtp(
+        email: email,
+        shouldCreateUser: false,
+      );
+      debugPrint('Auth: sign-in OTP sent to $email');
+    } on AuthException catch (e) {
+      debugPrint('Auth: sign-in OTP AuthException: ${e.message}');
+      rethrow;
+    } catch (e) {
+      debugPrint('Auth: sign-in OTP send failed: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> verifySignInOtp(String email, String token) async {
+    try {
+      await _client.auth.verifyOTP(
+        email: email,
+        token: token,
+        type: OtpType.email,
+      );
+      debugPrint('Auth: sign-in verified for $currentUserId');
+    } on AuthException catch (e) {
+      debugPrint('Auth: sign-in verify AuthException: ${e.message}');
+      rethrow;
+    } catch (e) {
+      debugPrint('Auth: sign-in OTP verification failed: $e');
+      rethrow;
+    }
+  }
+
   // ─── Auth state stream ─────────────────────────────────────────────────────
 
   Stream<AuthState> get authStateChanges =>
