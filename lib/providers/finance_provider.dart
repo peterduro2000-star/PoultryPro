@@ -189,6 +189,21 @@ class FinanceProvider extends ChangeNotifier {
     return map;
   }
 
+  // ─── Reset (on auth change) ────────────────────────────────────────────────
+  /// Clears all in-memory finance state. Called when the authenticated user
+  /// changes so no data leaks between accounts.
+  void reset() {
+    _expenses = [];
+    _sales = [];
+    _farmExpenses = [];
+    _farmSales = [];
+    _error = null;
+    _farmFinanceError = null;
+    _isLoading = false;
+    _isFarmFinanceLoading = false;
+    notifyListeners();
+  }
+
   // ─── Load & Refresh ────────────────────────────────────────────────────────
 
   /// Loads finance data for a single flock.

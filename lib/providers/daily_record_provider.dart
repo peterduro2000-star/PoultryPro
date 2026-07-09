@@ -25,6 +25,18 @@ class DailyRecordProvider extends ChangeNotifier {
   DailyRecord? latestFor(String flockId) => _latestRecords[flockId];
   int mortalityTotalFor(String flockId) => _mortalityTotals[flockId] ?? 0;
 
+  // ─── Reset (on auth change) ────────────────────────────────────────────────
+  /// Clears all in-memory record state. Called when the authenticated user
+  /// changes so no data leaks between accounts.
+  void reset() {
+    _records = [];
+    _latestRecords.clear();
+    _mortalityTotals.clear();
+    _error = null;
+    _isLoading = false;
+    notifyListeners();
+  }
+
   Future<void> loadRecords(String flockId) async {
     _isLoading = true;
     _error = null;

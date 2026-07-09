@@ -12,6 +12,7 @@ class LicenseProvider extends ChangeNotifier {
 
   SubscriptionEntitlement? _entitlement;
   bool _isLoading = false;
+  String? _lastKnownUserId;
 
   SubscriptionEntitlement? get entitlement => _entitlement;
   bool get isPro => _entitlement?.isPro ?? false;
@@ -19,12 +20,21 @@ class LicenseProvider extends ChangeNotifier {
 
   /// Id of the currently authenticated Supabase user, or null if anonymous /
   /// unauthenticated. The cache is only ever trusted for this exact id.
-  String? get _currentUserId =>
+  String? get currentUserId =>
       Supabase.instance.client.auth.currentUser?.id;
 
+  Future<void> refreshForAuth(String? userId) async {
+    if (userId == _lastKnownUserId) return;
+    _lastKnownUserId = userId;
+    if (userId == null) {
+      await clearEntitlement();
+    } else {
+      await loadEntitlement();
+    }
+  }
+
   Future<void> loadCachedEntitlement() async {
-    // Never apply a cache without a known authenticated user.
-    final userId = _currentUserId;
+    final userId = currentUserId;
     if (userId == null) {
       _entitlement = SubscriptionEntitlement.free;
       notifyListeners();
@@ -63,8 +73,7 @@ class LicenseProvider extends ChangeNotifier {
   }
 
   Future<void> loadEntitlement() async {
-    // Anonymous / unauthenticated users are always Free.
-    final userId = _currentUserId;
+    final userId = currentUserId;
     if (userId == null) {
       _entitlement = SubscriptionEntitlement.free;
       notifyListeners();
@@ -107,7 +116,7 @@ class LicenseProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final map = _entitlement?.toMap() ?? {};
       final serializable = <String, dynamic>{
-        'userId': _currentUserId,
+        'userId': currentUserId,
         'tier': map['tier'] ?? 'free',
         'expiresAt': map['expires_at']?.toString(),
         'isActive': map['is_active'] ?? true,

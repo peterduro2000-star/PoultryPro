@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/supabase_auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../providers/auth_provider.dart';
+
 enum AuthStatus { unknown, anonymous, verified }
 
 class AuthProvider extends ChangeNotifier {
@@ -193,9 +193,10 @@ class AuthProvider extends ChangeNotifier {
     _setLoading();
     try {
       await _authService.signOut();
-      _userId = null;
+      await _authService.signInAnonymously();
+      _userId = _authService.currentUserId;
+      _status = AuthStatus.anonymous;
       _pendingEmail = null;
-      _status = AuthStatus.unknown;
       _error = null;
     } catch (e) {
       _error = e.toString();
@@ -204,6 +205,14 @@ class AuthProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> refreshAuthState() async {
+    _userId = _authService.currentUserId;
+    _status = _authService.isAnonymous
+        ? AuthStatus.anonymous
+        : AuthStatus.verified;
+    notifyListeners();
   }
 
   void clearError() {

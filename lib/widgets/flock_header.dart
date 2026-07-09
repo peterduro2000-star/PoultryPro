@@ -25,8 +25,13 @@ class FlockHeader extends StatelessWidget {
                 Icon(Icons.info_outline,
                     size: 16, color: AppTheme.textSecondary),
                 const SizedBox(width: AppTheme.spacingSM),
-                Text('No flock selected — go to Home to select one',
-                    style: AppTheme.bodySmall),
+                Expanded(
+                  child: Text(
+                    'No flock selected — go to Home to select one',
+                    style: AppTheme.bodySmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
           );

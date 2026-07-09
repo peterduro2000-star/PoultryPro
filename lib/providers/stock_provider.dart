@@ -15,6 +15,17 @@ class StockProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  // ─── Reset (on auth change) ────────────────────────────────────────────────
+  /// Clears all in-memory stock state. Called when the authenticated user
+  /// changes so no data leaks between accounts.
+  void reset() {
+    _stocks = [];
+    _lowStockAlerts = [];
+    _error = null;
+    _isLoading = false;
+    notifyListeners();
+  }
+
   Future<void> loadStock(String flockId) async {
     _isLoading = true;
     _error = null;

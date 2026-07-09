@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../models/flock.dart';
 import '../services/database_service.dart';
@@ -27,7 +28,7 @@ class FlockProvider extends ChangeNotifier {
   bool get hasReachedLimit => _flocks.length >= 1;
 
   // ─── Load Flocks ──────────────────────────────────────────────────────────
-  Future<void> loadFlocks() async {
+  Future<void> loadFlocks({String? userId}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -36,16 +37,23 @@ class FlockProvider extends ChangeNotifier {
       final db = DatabaseService();
       _flocks = await db.getAllFlocks();
 
-      // Restore previously selected flock
+      // Restore a previously selected flock that BELONGS TO THE CURRENT USER.
+      // Selection is persisted under a user-specific key so a flock selected
+      // by one account can never leak into another account.
+      final effectiveUserId =
+          userId ?? Supabase.instance.client.auth.currentUser?.id;
       final prefs = await SharedPreferences.getInstance();
-      final savedId = prefs.getString('selected_flock_id');
+      final savedId = prefs.getString(_selectedFlockKey(effectiveUserId));
+
       if (savedId != null) {
-        _selectedFlock = _flocks.firstWhere(
-          (f) => f.id == savedId,
-          orElse: () => _flocks.isNotEmpty ? _flocks.first : _selectedFlock!,
-        );
-      } else if (_flocks.isNotEmpty && _selectedFlock == null) {
+        final match = _flocks.where((f) => f.id == savedId);
+        _selectedFlock = match.isNotEmpty
+            ? match.first
+            : (_flocks.isNotEmpty ? _flocks.first : null);
+      } else if (_flocks.isNotEmpty) {
         _selectedFlock = _flocks.first;
+      } else {
+        _selectedFlock = null;
       }
 
       _isLoading = false;
@@ -57,6 +65,19 @@ class FlockProvider extends ChangeNotifier {
       rethrow;
     }
   }
+
+  // ─── Reset (on auth change) ────────────────────────────────────────────────
+  /// Clears all in-memory state. Called when the authenticated user changes so
+  /// that no flock/selection from the previous account is carried over.
+  void reset() {
+    _flocks = [];
+    _selectedFlock = null;
+    _isLoading = false;
+    _error = null;
+    notifyListeners();
+  }
+
+  String _selectedFlockKey(String? userId) => 'selected_flock_$userId';
 
   // ─── Create Flock (Full Object) ────────────────────────────────────────────
   Future<void> createFlock(Flock flock) async {
@@ -175,14 +196,28 @@ class FlockProvider extends ChangeNotifier {
   void selectFlock(Flock flock) {
     _selectedFlock = flock;
     notifyListeners();
-    // persist selection
+    // Persist selection under the current user's key so it cannot bleed into
+    // another account.
+    final userId = Supabase.instance.client.auth.currentUser?.id;
     SharedPreferences.getInstance()
-        .then((p) => p.setString('selected_flock_id', flock.id));
+        .then((p) => p.setString(_selectedFlockKey(userId), flock.id));
   }
 
   void clearSelection() {
     _selectedFlock = null;
     notifyListeners();
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    SharedPreferences.getInstance()
+        .then((p) => p.remove(_selectedFlockKey(userId)));
+  }
+
+  /// Removes any persisted flock selection for the CURRENT user.
+  /// Call this on logout so the outgoing account's selection does not survive.
+  Future<void> clearPersistedSelectionForCurrentUser() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_selectedFlockKey(userId));
+    await prefs.remove('selected_flock_id'); // legacy global key cleanup
   }
 
   // ─── Clear Error ──────────────────────────────────────────────────────────

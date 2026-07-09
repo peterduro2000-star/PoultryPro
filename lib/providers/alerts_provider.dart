@@ -27,6 +27,15 @@ class AlertsProvider extends ChangeNotifier {
   bool get hasCritical => criticalCount > 0;
   bool get isLoading => _isLoading;
 
+  // ─── Reset (on auth change) ────────────────────────────────────────────────
+  /// Clears all in-memory alert state. Called when the authenticated user
+  /// changes so no data leaks between accounts.
+  void reset() {
+    _alertsByFlock.clear();
+    _isLoading = false;
+    notifyListeners();
+  }
+
   Future<void> refreshAlertsForFlock({
     required Flock flock,
     required List<DailyRecord> records,

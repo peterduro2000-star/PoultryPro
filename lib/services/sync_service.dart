@@ -134,6 +134,8 @@ class SyncService extends ChangeNotifier {
   bool get hasError => _state == SyncState.error;
   bool get isHealthy => _state == SyncState.idle && _lastError == null;
 
+  bool get isAnonymous => _auth.isAnonymous;
+
   void setLicense(LicenseProvider license) {
     _license = license;
   }
@@ -143,6 +145,38 @@ class SyncService extends ChangeNotifier {
   /// Call once from main.dart after auth is initialised.
   void startPeriodicSync() {
     debugPrint('SyncService: event-driven sync initialised');
+  }
+
+  /// Completely stops the sync service and clears all of its state.
+  /// Called on sign-out so no anonymous/previous-account data lingers.
+  void stopAndClear() {
+    stopPeriodicSync();
+    _syncInProgress = false;
+    _state = SyncState.idle;
+    _lastError = null;
+    _lastSyncedAt = null;
+    _pendingCount = 0;
+    notifyListeners();
+  }
+
+  /// Driven by the provider graph whenever the license/entitlement changes.
+  /// Starts cloud sync only once a real (non-anonymous) account with a cloud
+  /// entitlement is established; otherwise stops and clears all sync state.
+  /// This guarantees sync never initialises for anonymous users and only
+  /// starts after the authenticated user's entitlement has been loaded.
+  void onEntitlementChanged() {
+    final entitlement = _license?.entitlement;
+    final eligible = !isAnonymous &&
+        entitlement != null &&
+        FeatureGate.canUseCloud(entitlement);
+
+    if (!eligible) {
+      stopAndClear();
+      return;
+    }
+
+    startPeriodicSync();
+    unawaited(syncNow());
   }
 
   void stopPeriodicSync() {
@@ -162,6 +196,8 @@ class SyncService extends ChangeNotifier {
   Future<void> syncNow() async {
     debugPrint("SYNC user = ${Supabase.instance.client.auth.currentUser?.id}");
     if (_syncInProgress) return;
+    // Anonymous users must never use cloud sync.
+    if (_auth.isAnonymous) return;
     if (!_auth.isAuthenticated) return;
     final entitlement = _license?.entitlement;
     if (entitlement == null || !FeatureGate.canUseCloud(entitlement)) return;
@@ -186,6 +222,8 @@ class SyncService extends ChangeNotifier {
 
   Future<void> downloadCloudData() async {
     if (_syncInProgress) return;
+    // Anonymous users must never use cloud sync.
+    if (_auth.isAnonymous) return;
     final userId = _auth.currentUserId;
     if (userId == null) return;
 
@@ -204,12 +242,10 @@ class SyncService extends ChangeNotifier {
             .select()
             .eq('user_id', userId);
 
-        final localRows = (rows is List)
-            ? rows
-                .whereType<Map<String, dynamic>>()
-                .map((r) => _toCamelCase(localTable, r))
-                .toList()
-            : <Map<String, dynamic>>[];
+        final localRows = rows
+            .whereType<Map<String, dynamic>>()
+            .map((r) => _toCamelCase(localTable, r))
+            .toList();
 
         data[localTable] = localRows;
       }

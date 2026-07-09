@@ -6,17 +6,84 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../theme/app_theme.dart';
 import '../providers/auth_provider.dart';
+import '../providers/flock_provider.dart';
+import '../providers/finance_provider.dart';
+import '../providers/daily_record_provider.dart';
 import '../providers/license_provider.dart';
 import '../services/database_service.dart';
 import '../services/sync_service.dart';
-import 'upgrade_screen.dart';
 import 'backup_screen.dart';
 import 'sign_in_screen.dart';
 
+// ============================================================================
+//   Unified Section Widget
+// ============================================================================
+
+class _SettingsSection extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String description;
+  final Color color;
+  final Widget child;
+
+  const _SettingsSection({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.color,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: AppTheme.cardDecoration,
+      padding: const EdgeInsets.all(AppTheme.spacingMD),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: color.withOpacity(0.12),
+                child: Icon(icon, color: color, size: 18),
+              ),
+              const SizedBox(width: AppTheme.spacingMD),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: AppTheme.headingSmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      description,
+                      style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppTheme.spacingMD),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+//   Main Settings Screen
+// ============================================================================
+
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
+
+  // ─── Data Actions ──────────────────────────────────────────────────────────
 
   Future<void> _syncNow(BuildContext context) async {
     try {
@@ -32,12 +99,36 @@ class SettingsScreen extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Sync failed: $e'),
-              backgroundColor: Colors.red),
+          SnackBar(content: Text('Sync failed: $e'), backgroundColor: AppTheme.errorColor),
         );
       }
     }
+  }
+
+  Widget _buildSyncButton(BuildContext context, SyncService sync) {
+    if (sync.isSyncing) {
+      return const SizedBox(
+        width: 16,
+        height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    return TextButton.icon(
+      onPressed: () => _syncNow(context),
+      icon: const Icon(Icons.sync_rounded, size: 16),
+      label: const Text('Sync'),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingSM),
+      ),
+    );
+  }
+
+  String _formatExpiry(DateTime expiry) {
+    const months = <String>[
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${expiry.day} ${months[expiry.month - 1]} ${expiry.year}';
   }
 
   Future<void> _backupData(BuildContext context) async {
@@ -66,8 +157,7 @@ class SettingsScreen extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-                '✅ Backup saved! Send this file to yourself on WhatsApp.'),
+            content: Text('✅ Backup saved! Send this file to yourself on WhatsApp.'),
             backgroundColor: Colors.green,
           ),
         );
@@ -75,9 +165,7 @@ class SettingsScreen extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Backup failed: $e'),
-              backgroundColor: Colors.red),
+          SnackBar(content: Text('Backup failed: $e'), backgroundColor: AppTheme.errorColor),
         );
       }
     }
@@ -85,10 +173,7 @@ class SettingsScreen extends StatelessWidget {
 
   Future<void> _restoreData(BuildContext context) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
-      );
-
+      final result = await FilePicker.platform.pickFiles(type: FileType.any);
       if (result == null || result.files.isEmpty) return;
 
       final file = File(result.files.first.path!);
@@ -110,8 +195,7 @@ class SettingsScreen extends StatelessWidget {
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Yes, Restore',
-                  style: TextStyle(color: Colors.red)),
+              child: const Text('Yes, Restore', style: TextStyle(color: AppTheme.errorColor)),
             ),
           ],
         ),
@@ -133,9 +217,7 @@ class SettingsScreen extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Restore failed: $e'),
-              backgroundColor: Colors.red),
+          SnackBar(content: Text('Restore failed: $e'), backgroundColor: AppTheme.errorColor),
         );
       }
     }
@@ -157,8 +239,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete Everything',
-                style: TextStyle(color: Colors.red)),
+            child: const Text('Delete Everything', style: TextStyle(color: AppTheme.errorColor)),
           ),
         ],
       ),
@@ -166,268 +247,22 @@ class SettingsScreen extends StatelessWidget {
 
     if (confirmed == true) {
       await DatabaseService().clearAllData();
+      final flockProvider = context.read<FlockProvider>();
+      await flockProvider.clearPersistedSelectionForCurrentUser();
+      flockProvider.reset();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('All data cleared'),
-              backgroundColor: Colors.red),
+          const SnackBar(content: Text('All data cleared'), backgroundColor: AppTheme.errorColor),
         );
       }
     }
   }
 
-  // Replacement bottom sheet for phone number entry
-  void _showPhoneSignInSheet(BuildContext context) {
-    final phoneController = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Enter your phone number',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            const Text(
-                'We\'ll send a verification code to confirm your account.'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                hintText: '+2348012345678',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.phone),
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () async {
-                  final phone = phoneController.text.trim();
-                  if (phone.isEmpty) return;
-                  Navigator.pop(context);
-                  final auth = context.read<AuthProvider>();
-                  final sent = await auth.sendOtp(phone);
-                  if (sent && context.mounted) {
-                    _showOtpSheet(context, phone);
-                  } else if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(auth.error ?? 'Failed to send code'),
-                        backgroundColor: AppTheme.errorColor,
-                      ),
-                    );
-                  }
-                },
-                child: const Text('Send Code'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showOtpSheet(BuildContext context, String phone) {
-    final otpController = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Enter verification code',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            Text('Code sent to $phone'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: otpController,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              decoration: const InputDecoration(
-                hintText: '123456',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.lock_outline),
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () async {
-                  final token = otpController.text.trim();
-                  if (token.length != 6) return;
-                  Navigator.pop(context);
-                  final auth = context.read<AuthProvider>();
-                  final verified = await auth.verifyOtp(token);
-                  if (verified && context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                            '✅ Account verified! You can now upgrade.'),
-                        backgroundColor: AppTheme.successColor,
-                      ),
-                    );
-                  } else if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(auth.error ?? 'Incorrect code'),
-                        backgroundColor: AppTheme.errorColor,
-                      ),
-                    );
-                  }
-                },
-                child: const Text('Verify'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Updated sign-in prompt – uses phone bottom sheet instead of broken route
-  void _showSignInRequired(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.lock_outline, size: 48, color: AppTheme.primaryColor),
-            const SizedBox(height: 16),
-            const Text(
-              'Sign In to Upgrade',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'You need a verified account to subscribe to Poultry Pro. '
-              'Sign in with your phone number to continue.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () {
-                  Navigator.pop(context); // close sheet
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const BackupScreen()),
-                  );
-                },
-                icon: const Icon(Icons.phone),
-                label: const Text('Sign In with Phone'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Not now'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProCard(BuildContext context, AuthProvider auth) {
-    final isPro = context.watch<LicenseProvider>().isPro;
-    final isAnonymous = auth.isAnonymous;
-
-    return Card(
-      color: isPro ? Colors.orange.shade50 : Colors.green.shade50,
-      child: ListTile(
-        leading: Icon(
-          isPro ? Icons.stars : Icons.verified,
-          color: isPro ? Colors.orange : Colors.green,
-        ),
-        title: Text(isPro ? 'PoultryPro Premium' : 'PoultryPro Plus'),
-        subtitle: Text(
-          isPro
-              ? 'Subscription Active'
-              : isAnonymous
-                  ? 'Protect your data or sign in to an existing account'
-                  : 'Manage your subscription',
-        ),
-        trailing: isPro
-            ? const Icon(Icons.check_circle, color: Colors.green)
-            : isAnonymous
-                ? _buildAnonymousActions(context)
-                : ElevatedButton(
-                    onPressed: () async {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const UpgradeScreen(),
-                        ),
-                      );
-                    },
-                    child: const Text('Upgrade'),
-                  ),
-      ),
-    );
-  }
-
-  Widget _buildAnonymousActions(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 140,
-          child: ElevatedButton(
-            onPressed: () async {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const BackupScreen()),
-              );
-            },
-            style: AppTheme.primaryButtonStyle.copyWith(
-              minimumSize: const WidgetStatePropertyAll(Size(double.infinity, 36)),
-            ),
-            child: const Text('Protect My Data', style: TextStyle(fontSize: 12)),
-          ),
-        ),
-        const SizedBox(height: 4),
-        SizedBox(
-          width: 140,
-          child: TextButton(
-            onPressed: () => _attemptSignIn(context),
-            child: const Text('Sign In', style: TextStyle(fontSize: 12)),
-          ),
-        ),
-      ],
-    );
-  }
+  // ─── Account Actions ──────────────────────────────────────────────────────
 
   Future<void> _attemptSignIn(BuildContext context) async {
     final db = DatabaseService();
     final sync = context.read<SyncService>();
-    final license = context.read<LicenseProvider>();
 
     final hasBusinessData = await db.hasAnyBusinessRecords();
     final hasPendingSync = sync.pendingCount > 0;
@@ -478,6 +313,9 @@ class SettingsScreen extends StatelessWidget {
     final sync = context.read<SyncService>();
     final license = context.read<LicenseProvider>();
     final auth = context.read<AuthProvider>();
+    final flockProvider = context.read<FlockProvider>();
+    final financeProvider = context.read<FinanceProvider>();
+    final recordProvider = context.read<DailyRecordProvider>();
 
     try {
       sync.stopPeriodicSync();
@@ -491,6 +329,8 @@ class SettingsScreen extends StatelessWidget {
       await DatabaseService().clearSyncQueue();
       await license.clearEntitlement();
 
+      await flockProvider.clearPersistedSelectionForCurrentUser();
+
       await auth.signOut();
 
       final signedIn = await Navigator.push<bool>(
@@ -502,6 +342,17 @@ class SettingsScreen extends StatelessWidget {
         await license.loadEntitlement();
         sync.startPeriodicSync();
         unawaited(sync.downloadCloudData());
+
+        await flockProvider.loadFlocks();
+        if (context.mounted) await financeProvider.loadFarmFinanceData();
+        if (context.mounted) {
+          final flocks = flockProvider.flocks;
+          if (flocks.isNotEmpty) {
+            final ids = flocks.map((f) => f.id).toList();
+            await recordProvider.loadLatestRecords(ids);
+            await recordProvider.loadMortalityTotals(ids);
+          }
+        }
       }
     } catch (e) {
       if (context.mounted) {
@@ -515,90 +366,323 @@ class SettingsScreen extends StatelessWidget {
     }
   }
 
-  Widget _buildCloudSyncCard(BuildContext context) {
-    final isPro = context.watch<LicenseProvider>().isPro;
-    final sync = context.watch<SyncService>();
+  Future<void> _showSignOutDialog(
+      BuildContext context, AuthProvider auth, String? email) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign Out'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('You\'re signing out of:'),
+            const SizedBox(height: AppTheme.spacingXS),
+            Text(email ?? 'Anonymous', style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: AppTheme.spacingMD),
+            const Text('Your poultry records will remain on this device.'),
+            const SizedBox(height: AppTheme.spacingXS),
+            const Text('Cloud sync will stop.'),
+            const SizedBox(height: AppTheme.spacingXS),
+            const Text(
+              'Another person using this phone can still view these records until they are erased.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.errorColor),
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
 
-    if (!isPro) {
-      return Card(
-        color: Colors.grey.shade50,
-        child: ListTile(
-          leading: CircleAvatar(
-            backgroundColor: AppTheme.textSecondary.withValues(alpha: 0.1),
-            child: Icon(Icons.cloud_off_outlined,
-                color: AppTheme.textSecondary, size: 20),
+    if (confirmed == true && context.mounted) {
+      final flockProvider = context.read<FlockProvider>();
+      await flockProvider.clearPersistedSelectionForCurrentUser();
+      await auth.signOut();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Signed out. A new anonymous session has been created.'),
+            backgroundColor: Colors.green,
           ),
-          title: Text(
-            'Cloud Sync',
-            style: AppTheme.bodyLarge
-                .copyWith(fontWeight: FontWeight.w600, color: Colors.grey),
+        );
+      }
+    }
+  }
+
+  Future<void> _showEraseDataDialog(BuildContext context) async {
+    final sync = context.read<SyncService>();
+    final pendingCount = sync.pendingCount;
+
+    if (pendingCount > 0) {
+      await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Unsaved Changes'),
+          content: Text(
+            'You have $pendingCount records that haven\'t synced yet.\n\n'
+            'Erasing now will permanently delete them.\n\n'
+            'Connect to the internet first if you want to keep them.',
           ),
-          subtitle: const Text(
-            'Upgrade to Pro for automatic cloud backup',
-            style: TextStyle(color: Colors.grey),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(context, false);
+                await _doEraseData(context);
+              },
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.errorColor),
+              child: const Text('Erase Anyway'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Erase All Data?'),
+          content: const Text(
+            'This will permanently delete all your poultry records, flocks, '
+            'expenses, and sales from this device.\n\n'
+            'This cannot be undone.',
           ),
-          trailing: Icon(Icons.lock_outline, color: Colors.grey, size: 20),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(context, true);
+                await _doEraseData(context);
+              },
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.errorColor),
+              child: const Text('Erase Everything'),
+            ),
+          ],
         ),
       );
     }
+  }
 
+  Future<void> _doEraseData(BuildContext context) async {
+    final sync = context.read<SyncService>();
+    final license = context.read<LicenseProvider>();
+    final auth = context.read<AuthProvider>();
+
+    try {
+      sync.stopPeriodicSync();
+
+      while (sync.isSyncing) {
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
+      await sync.syncNow();
+
+      await DatabaseService().clearAllData();
+      await DatabaseService().clearSyncQueue();
+      await license.clearEntitlement();
+
+      final flockProvider = context.read<FlockProvider>();
+      await flockProvider.clearPersistedSelectionForCurrentUser();
+      flockProvider.reset();
+
+      await auth.signOut();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All data erased. New anonymous session created.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erase failed: $e'), backgroundColor: AppTheme.errorColor),
+        );
+      }
+    }
+  }
+
+  // ─── Account & Cloud Configuration ─────────────────────────────────────────
+
+  Widget _buildAccountAndCloudCard(BuildContext context, AuthProvider auth) {
+    final email = Supabase.instance.client.auth.currentUser?.email;
+    final isProtected = auth.isVerified;
+    final license = context.watch<LicenseProvider>();
+    final entitlement = license.entitlement;
+    final isPro = entitlement?.isPro ?? false;
+    final expiry = entitlement?.expiresAt;
+    final sync = context.watch<SyncService>();
+    final pendingCount = sync.pendingCount;
     final lastSynced = sync.lastSyncedAt != null
         ? '${sync.lastSyncedAt!.day}/${sync.lastSyncedAt!.month}/${sync.lastSyncedAt!.year} '
           '${sync.lastSyncedAt!.hour}:${sync.lastSyncedAt!.minute.toString().padLeft(2, '0')}'
         : 'Never';
-    final pendingCount = sync.pendingCount;
 
-    return Card(
-      color: AppTheme.primaryColor.withValues(alpha: 0.04),
-      child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingMD),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+    return _SettingsSection(
+      icon: Icons.shield_outlined,
+      title: 'Account & Cloud',
+      description: 'Manage your account, cloud backup and subscription.',
+      color: AppTheme.primaryColor,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _InfoRow(
+            label: 'Signed in as',
+            value: email ?? 'Anonymous',
+            valueColor: email != null ? AppTheme.textPrimary : AppTheme.textSecondary,
+          ),
+          const SizedBox(height: AppTheme.spacingMD),
+
+          _InfoRow(
+            label: 'Account Status',
+            valueWidget: _buildStatusChip(
+              isProtected ? 'Protected' : 'Not Protected',
+              isProtected ? Colors.green : Colors.orange,
+            ),
+          ),
+          const SizedBox(height: AppTheme.spacingMD),
+
+          _InfoRow(
+            label: 'Plan',
+            valueWidget: _buildStatusChip(
+              isPro ? 'Premium' : 'Free',
+              isPro ? Colors.green : Colors.grey,
+            ),
+            trailing: (isPro && expiry != null)
+                ? Text(
+                    'Valid until ${_formatExpiry(expiry)}',
+                    style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
+                  )
+                : null,
+          ),
+          const SizedBox(height: AppTheme.spacingMD),
+
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingSM),
+            child: Divider(color: AppTheme.textSecondary.withOpacity(0.2), height: 1),
+          ),
+          const SizedBox(height: AppTheme.spacingSM),
+
+          // Cloud Backup
+          if (auth.isAnonymous) ...[
+            _InfoRow(
+              label: 'Cloud Backup',
+              valueWidget: _buildStatusChip('Not Available', Colors.grey),
+            ),
+          ] else ...[
+            _InfoRow(
+              label: 'Cloud Backup',
+              valueWidget: _buildStatusChip('Enabled', Colors.green),
+            ),
+            if (isPro) ...[
+              const SizedBox(height: AppTheme.spacingXS),
+              _InfoRow(
+                label: 'Last sync',
+                value: lastSynced,
+                secondaryValue: pendingCount == 0
+                    ? 'All changes backed up'
+                    : '$pendingCount change${pendingCount == 1 ? '' : 's'} pending',
+                secondaryValueColor:
+                    pendingCount > 0 ? Colors.orange : AppTheme.textSecondary,
+                trailing: _buildSyncButton(context, sync),
+              ),
+            ] else ...[
+              const SizedBox(height: AppTheme.spacingXS),
+              Text(
+                'Cloud backup protects your poultry records.',
+                style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
+              ),
+            ],
+          ],
+
+          const SizedBox(height: AppTheme.spacingLG),
+
+          // Action buttons
+          if (auth.isAnonymous) ...[
             Row(
               children: [
-                Icon(Icons.cloud_done_outlined,
-                    color: AppTheme.primaryColor, size: 20),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const BackupScreen()),
+                    ),
+                    icon: const Icon(Icons.shield_outlined, size: 18),
+                    label: const Text('Protect My Backup'),
+                  ),
+                ),
                 const SizedBox(width: AppTheme.spacingSM),
-                Text('Cloud Sync', style: AppTheme.headingSmall),
+                OutlinedButton(
+                  onPressed: () => _attemptSignIn(context),
+                  child: const Text('Sign In'),
+                ),
               ],
             ),
-            const SizedBox(height: AppTheme.spacingSM),
+          ] else ...[
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Last synced: $lastSynced',
-                      style: AppTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      pendingCount == 0
-                          ? 'All changes backed up'
-                          : '$pendingCount change${pendingCount == 1 ? '' : 's'} pending',
-                      style: AppTheme.bodySmall.copyWith(
-                        color: pendingCount > 0
-                            ? AppTheme.warningColor
-                            : AppTheme.textSecondary,
-                      ),
-                    ),
-                  ],
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _attemptSignIn(context),
+                    icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                    label: const Text('Switch Account'),
+                  ),
                 ),
-                TextButton.icon(
-                  onPressed: () => _syncNow(context),
-                  icon: const Icon(Icons.sync, size: 16),
-                  label: const Text('Sync now'),
+                const SizedBox(width: AppTheme.spacingSM),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showSignOutDialog(context, auth, email),
+                    icon: const Icon(Icons.logout_rounded, size: 18, color: AppTheme.errorColor),
+                    label: const Text('Sign Out', style: TextStyle(color: AppTheme.errorColor)),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppTheme.errorColor),
+                    ),
+                  ),
                 ),
               ],
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  // ─── Helper: Status Chip ──────────────────────────────────────────────────
+
+  Widget _buildStatusChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingSM, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
         ),
       ),
     );
   }
+
+  // ─── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -606,79 +690,24 @@ class SettingsScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: const Text('🐔 PoultryPro Settings')),
       body: ListView(
         padding: const EdgeInsets.all(AppTheme.spacingMD),
         children: [
-          // ── Subscription Section ──────────────────────────
-          Container(
-            decoration: AppTheme.cardDecoration,
-            padding: const EdgeInsets.all(AppTheme.spacingMD),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.workspace_premium,
-                        color: AppTheme.primaryColor, size: 18),
-                    const SizedBox(width: AppTheme.spacingSM),
-                    Text('Subscription', style: AppTheme.headingSmall),
-                  ],
-                ),
-                const SizedBox(height: AppTheme.spacingMD),
-                _buildProCard(context, auth),
-              ],
-            ),
-          ),
+          // ── Account & Cloud ──────────────────────────────────────
+          _buildAccountAndCloudCard(context, auth),
           const SizedBox(height: AppTheme.spacingLG),
 
-          // ── Cloud Sync Section ────────────────────────────
-          Container(
-            decoration: AppTheme.cardDecoration,
-            padding: const EdgeInsets.all(AppTheme.spacingMD),
+          // ── Data Management ──────────────────────────────────────
+          _SettingsSection(
+            icon: Icons.storage_rounded,
+            title: 'Data Management',
+            description: 'Create and restore backups.',
+            color: Colors.blue,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.cloud_done_outlined,
-                        color: AppTheme.secondaryColor, size: 18),
-                    const SizedBox(width: AppTheme.spacingSM),
-                    Text('Cloud Sync', style: AppTheme.headingSmall),
-                  ],
-                ),
-                const SizedBox(height: AppTheme.spacingMD),
-                _buildCloudSyncCard(context),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppTheme.spacingLG),
-
-          // ── Data Management Section ───────────────────────
-          Container(
-            decoration: AppTheme.cardDecoration,
-            padding: const EdgeInsets.all(AppTheme.spacingMD),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.storage_rounded,
-                        color: AppTheme.secondaryColor, size: 18),
-                    const SizedBox(width: AppTheme.spacingSM),
-                    Text('Data Management', style: AppTheme.headingSmall),
-                  ],
-                ),
-                const SizedBox(height: AppTheme.spacingSM),
-                Text(
-                  'Cloud backup runs automatically. Use manual backup '
-                  'to save a local copy to your phone.',
-                  style: AppTheme.bodySmall
-                      .copyWith(color: AppTheme.textSecondary),
-                ),
-                const SizedBox(height: AppTheme.spacingMD),
                 _SettingsButton(
-                  icon: Icons.backup,
+                  icon: Icons.backup_rounded,
                   title: 'Manual Backup',
                   subtitle: 'Save a local copy and share via WhatsApp',
                   color: AppTheme.secondaryColor,
@@ -686,36 +715,58 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: AppTheme.spacingSM),
                 _SettingsButton(
-                  icon: Icons.restore,
+                  icon: Icons.restore_page_rounded,
                   title: 'Restore From Backup',
                   subtitle: 'Load data from a previous backup file',
-                  color: AppTheme.warningColor,
+                  color: Colors.orange,
                   onTap: () => _restoreData(context),
-                ),
-                const SizedBox(height: AppTheme.spacingSM),
-                _SettingsButton(
-                  icon: Icons.delete_forever,
-                  title: 'Clear All Data',
-                  subtitle: 'Delete everything — cannot be undone',
-                  color: AppTheme.errorColor,
-                  onTap: () => _clearAllData(context),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: AppTheme.spacingXL),
+          const SizedBox(height: AppTheme.spacingLG),
 
-          // ── Footer ────────────────────────────────────────
-          Center(
+          // ── Danger Zone ──────────────────────────────────────────
+          _SettingsSection(
+            icon: Icons.warning_amber_rounded,
+            title: 'Danger Zone',
+            description: 'Permanent actions.',
+            color: AppTheme.errorColor,
             child: Column(
               children: [
-                Text('App Version 1.0.2',
-                    style: AppTheme.bodySmall
-                        .copyWith(color: AppTheme.textSecondary)),
-                const SizedBox(height: 2),
-                Text('Built for African Poultry Farmers',
-                    style: AppTheme.bodySmall
-                        .copyWith(color: AppTheme.textSecondary)),
+                _SettingsButton(
+                  icon: Icons.delete_forever_rounded,
+                  title: 'Clear All Data',
+                  subtitle: 'Delete everything on this device — cannot be undone',
+                  color: AppTheme.errorColor,
+                  onTap: () => _clearAllData(context),
+                ),
+                const SizedBox(height: AppTheme.spacingSM),
+                _SettingsButton(
+                  icon: Icons.delete_sweep_rounded,
+                  title: 'Erase Data & Sign Out',
+                  subtitle: 'Permanently delete all local data and start fresh',
+                  color: AppTheme.errorColor,
+                  onTap: () => _showEraseDataDialog(context),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppTheme.spacingLG),
+
+          // ── Footer ───────────────────────────────────────────────
+          const Center(
+            child: Column(
+              children: [
+                _AppVersionText(),
+                SizedBox(height: AppTheme.spacingXS),
+                Text(
+                  'Built for African Poultry Farmers',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
               ],
             ),
           ),
@@ -725,6 +776,73 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
+// ============================================================================
+//   Reusable Info Row
+// ============================================================================
+
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String? value;
+  final Widget? valueWidget;
+  final String? secondaryValue;
+  final Color? valueColor;
+  final Color? secondaryValueColor;
+  final Widget? trailing;
+  final bool bold;
+
+  const _InfoRow({
+    required this.label,
+    this.value,
+    this.valueWidget,
+    this.secondaryValue,
+    this.valueColor,
+    this.secondaryValueColor,
+    this.trailing,
+    this.bold = false,
+  }) : assert(value != null || valueWidget != null, 'Either value or valueWidget must be provided');
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary)),
+              const SizedBox(height: 2),
+              if (valueWidget != null)
+                valueWidget!
+              else if (value != null)
+                Text(
+                  value!,
+                  style: AppTheme.bodyLarge.copyWith(
+                    fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
+                    color: valueColor ?? AppTheme.textPrimary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              if (secondaryValue != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  secondaryValue!,
+                  style: AppTheme.bodySmall.copyWith(color: secondaryValueColor),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (trailing != null) trailing!,
+      ],
+    );
+  }
+}
+
+// ============================================================================
+//   Reusable Settings Button
+// ============================================================================
 
 class _SettingsButton extends StatelessWidget {
   final IconData icon;
@@ -743,24 +861,100 @@ class _SettingsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppTheme.radiusMD),
-      ),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: color.withValues(alpha: 0.1),
-          child: Icon(icon, color: color),
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTheme.spacingSM,
+          vertical: AppTheme.spacingSM,
         ),
-        title: Text(title,
-            style: AppTheme.bodyLarge
-                .copyWith(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle, style: AppTheme.bodySmall),
-        onTap: onTap,
-        trailing: Icon(Icons.arrow_forward_ios,
-            size: 16, color: AppTheme.textSecondary),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: color.withOpacity(0.12),
+              child: Icon(icon, color: color, size: 18),
+            ),
+            const SizedBox(width: AppTheme.spacingMD),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: AppTheme.bodyLarge.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: AppTheme.bodySmall.copyWith(
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: AppTheme.textSecondary,
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+// ============================================================================
+//   Footer: App Version
+// ============================================================================
+
+class _AppVersionText extends StatefulWidget {
+  const _AppVersionText();
+
+  @override
+  State<_AppVersionText> createState() => _AppVersionTextState();
+}
+
+class _AppVersionTextState extends State<_AppVersionText> {
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _version = info.version);
+    } catch (_) {
+      // leave blank
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          'PoultryPro',
+          style: AppTheme.bodyLarge.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'Version $_version',
+          style: AppTheme.bodySmall.copyWith(
+            color: AppTheme.textSecondary,
+          ),
+        ),
+      ],
     );
   }
 }

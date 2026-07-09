@@ -34,7 +34,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   void initState() {
     super.initState();
-    // Listen for auth to become ready then show nudge
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scheduleBackupNudge();
     });
@@ -48,9 +47,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       });
       return;
     }
-    // Show if not yet verified (still anonymous)
-    // We show once per app session — banner auto-dismisses if user
-    // navigates away, and reappears on next launch until verified.
     if (!auth.isVerified && auth.userId != null) {
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) _showBackupNudge();
@@ -61,31 +57,26 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void _showBackupNudge() {
     ScaffoldMessenger.of(context).showMaterialBanner(
       MaterialBanner(
-        backgroundColor:
-            AppTheme.primaryColor.withValues(alpha: 0.06),
+        backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.06),
         content: Text(
           'Your data is only on this device — back it up now.',
-          style:
-              AppTheme.bodySmall.copyWith(color: AppTheme.textPrimary),
+          style: AppTheme.bodySmall.copyWith(color: AppTheme.textPrimary),
         ),
         leading: Icon(Icons.cloud_off_outlined,
             color: AppTheme.primaryColor, size: 22),
         actions: [
           TextButton(
             onPressed: () =>
-                ScaffoldMessenger.of(context)
-                    .hideCurrentMaterialBanner(),
+                ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
             child: Text('Later',
                 style: TextStyle(color: AppTheme.textSecondary)),
           ),
           TextButton(
             onPressed: () {
-              ScaffoldMessenger.of(context)
-                  .hideCurrentMaterialBanner();
+              ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                    builder: (_) => const BackupScreen()),
+                MaterialPageRoute(builder: (_) => const BackupScreen()),
               );
             },
             child: Text(
@@ -106,7 +97,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     return Scaffold(
       body: Column(
         children: [
-          const SyncStatusBanner(),
+          // ✅ Fixed: Wrap banner with SafeArea (bottom: false)
+          const SafeArea(
+            bottom: false,
+            child: SyncStatusBanner(),
+          ),
           Expanded(
             child: IndexedStack(
               index: _selectedIndex,

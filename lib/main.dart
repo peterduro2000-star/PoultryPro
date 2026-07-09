@@ -48,8 +48,31 @@ class PoultryProApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => LicenseProvider()),
-        ChangeNotifierProvider(create: (_) => SyncService()),
+        ChangeNotifierProxyProvider<AuthProvider, LicenseProvider>(
+          create: (_) => LicenseProvider(),
+          update: (_, auth, license) {
+            final effectiveLicense = license ?? LicenseProvider();
+            // Anonymous sessions have no entitlement — pass null so the
+            // license provider clears to Free instead of loading (and
+            // potentially erroring on) an entitlement for an anonymous user.
+            final userId = auth.isAnonymous
+                ? null
+                : Supabase.instance.client.auth.currentUser?.id;
+            unawaited(effectiveLicense.refreshForAuth(userId));
+            return effectiveLicense;
+          },
+        ),
+        ChangeNotifierProxyProvider<LicenseProvider, SyncService>(
+          create: (_) => SyncService(),
+          update: (_, license, sync) {
+            final effectiveSync = sync ?? SyncService();
+            effectiveSync.setLicense(license);
+            // Start/stop cloud sync based on the (now loaded) entitlement.
+            // Sync only runs for non-anonymous accounts with cloud access.
+            effectiveSync.onEntitlementChanged();
+            return effectiveSync;
+          },
+        ),
         ChangeNotifierProvider(create: (_) => FlockProvider()),
         ChangeNotifierProvider(create: (_) => FinanceProvider()),
         ChangeNotifierProvider(create: (_) => DailyRecordProvider()),
@@ -80,6 +103,8 @@ class _AppBootstrap extends StatefulWidget {
 
 class _AppBootstrapState extends State<_AppBootstrap> {
   bool _bootComplete = false;
+  String? _lastUserId;
+  bool _authListenerAttached = false;
 
   @override
   void initState() {
@@ -87,13 +112,56 @@ class _AppBootstrapState extends State<_AppBootstrap> {
     _boot();
   }
 
+  /// Resets every data provider and reloads it for the newly authenticated
+  /// user. Guarantees that no flock/selection/data from a previous account is
+  /// carried into the next one, regardless of how the switch was triggered.
+  Future<void> _resetAndReloadForUser() async {
+    final flockProvider = context.read<FlockProvider>();
+    final financeProvider = context.read<FinanceProvider>();
+    final recordProvider = context.read<DailyRecordProvider>();
+    final stockProvider = context.read<StockProvider>();
+    final healthProvider = context.read<HealthProvider>();
+    final alertsProvider = context.read<AlertsProvider>();
+
+    flockProvider.reset();
+    financeProvider.reset();
+    recordProvider.reset();
+    stockProvider.reset();
+    healthProvider.reset();
+    alertsProvider.reset();
+
+    await flockProvider.loadFlocks();
+    if (!mounted) return;
+    await financeProvider.loadFarmFinanceData();
+    if (!mounted) return;
+
+    final flocks = flockProvider.flocks;
+    if (flocks.isNotEmpty) {
+      final flockIds = flocks.map((f) => f.id).toList();
+      await recordProvider.loadLatestRecords(flockIds);
+      await recordProvider.loadMortalityTotals(flockIds);
+    }
+  }
+
+  void _onAuthChanged() {
+    final auth = context.read<AuthProvider>();
+    final newUserId = auth.userId;
+    if (newUserId == _lastUserId) return;
+    _lastUserId = newUserId;
+    if (!mounted) return;
+    // Stop and clear sync immediately on any user change. The license graph
+    // will re-initialise it (via onEntitlementChanged) only once the new
+    // account's entitlement has loaded.
+    context.read<SyncService>().stopAndClear();
+    // Kicks off a full reset + reload for the new user.
+    unawaited(_resetAndReloadForUser());
+  }
+
   Future<void> _boot() async {
     await Future.delayed(Duration.zero);
     if (!mounted) return;
     try {
       final auth = context.read<AuthProvider>();
-      final sync = context.read<SyncService>();
-      final license = context.read<LicenseProvider>();
 
       await auth.checkFirstLaunch();
 
@@ -110,20 +178,27 @@ class _AppBootstrapState extends State<_AppBootstrap> {
         'Supabase user: ${Supabase.instance.client.auth.currentUser?.email}',
       );
 
-      if (auth.isAuthenticated) {
-        debugPrint("MAIN user before entitlement = ${Supabase.instance.client.auth.currentUser?.id}");
-        debugPrint("MAIN email before entitlement = ${Supabase.instance.client.auth.currentUser?.email}");
-        await license.loadCachedEntitlement();
-        sync.startPeriodicSync();
-        unawaited(sync.syncNow());
-        await license.loadEntitlement();
-      } else {
-        await license.clearEntitlement();
-      }
+      // Cloud sync is no longer started here. It is driven by the provider
+      // graph (LicenseProvider → SyncService.onEntitlementChanged) so it only
+      // initialises after authentication is established and the account's
+      // entitlement has been loaded. Anonymous sessions never sync.
+
+      debugPrint("MAIN user after init = ${Supabase.instance.client.auth.currentUser?.id}");
+      debugPrint("MAIN email after init = ${Supabase.instance.client.auth.currentUser?.email}");
     } catch (e) {
       debugPrint('Boot error (non-fatal): $e');
     } finally {
-      if (mounted) setState(() => _bootComplete = true);
+      if (mounted) {
+        // Record the initial user so the first auth notification (which fires
+        // during boot) doesn't trigger a spurious reset/reload.
+        final auth = context.read<AuthProvider>();
+        _lastUserId = auth.userId;
+        if (!_authListenerAttached) {
+          auth.addListener(_onAuthChanged);
+          _authListenerAttached = true;
+        }
+        setState(() => _bootComplete = true);
+      }
     }
   }
 
