@@ -11,6 +11,7 @@ import '../theme/app_theme.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/date_formatter.dart';
 import '../widgets/flock_header.dart';
+import '../widgets/metric_card.dart';
 
 class FinanceScreen extends StatefulWidget {
   const FinanceScreen({super.key});
@@ -266,81 +267,46 @@ class _SummaryBar extends StatelessWidget {
             // ── FIX 2: Each chip is now in an Expanded with a fixed
             // minimum height. The value text uses auto-sizing so it
             // shrinks gracefully instead of truncating with ellipsis.
-            _SummaryChip(
-              icon: Icons.arrow_downward,
-              label: 'Expenses',
-              value: CurrencyFormatter.formatCompact(provider.totalExpenses),
-              color: AppTheme.errorColor,
-            ),
-            const VerticalDivider(width: AppTheme.spacingSM, thickness: 1),
-            _SummaryChip(
-              icon: Icons.arrow_upward,
-              label: 'Sales',
-              value: CurrencyFormatter.formatCompact(provider.totalSales),
-              color: AppTheme.successColor,
-            ),
-            const VerticalDivider(width: AppTheme.spacingSM, thickness: 1),
-            _SummaryChip(
-              icon: isProfit ? Icons.trending_up : Icons.trending_down,
-              label: isProfit ? 'Profit' : 'Loss',
-              value: CurrencyFormatter.formatCompact(provider.profit.abs()),
-              color: isProfit ? AppTheme.successColor : AppTheme.errorColor,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SummaryChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _SummaryChip({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-            vertical: AppTheme.spacingSM, horizontal: AppTheme.spacingXS),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(AppTheme.radiusSM),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 18),
-            const SizedBox(height: 2),
-            // FitWidth auto-shrinks the font when the number is large
-            // so it never clips or shows ellipsis.
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                value,
-                style: AppTheme.bodyMedium.copyWith(
-                    color: color, fontWeight: FontWeight.bold),
+            Expanded(
+              child: MetricCard(
+                icon: Icons.arrow_downward,
+                label: 'Expenses',
+                value: CurrencyFormatter.formatCompact(provider.totalExpenses),
+                color: AppTheme.errorColor,
+                iconSize: 18,
+                tintBackground: true,
               ),
             ),
-            Text(label,
-                style: AppTheme.bodySmall
-                    .copyWith(color: AppTheme.textSecondary),
-                overflow: TextOverflow.ellipsis),
+            const VerticalDivider(width: AppTheme.spacingSM, thickness: 1),
+            Expanded(
+              child: MetricCard(
+                icon: Icons.arrow_upward,
+                label: 'Sales',
+                value: CurrencyFormatter.formatCompact(provider.totalSales),
+                color: AppTheme.successColor,
+                iconSize: 18,
+                tintBackground: true,
+              ),
+            ),
+            const VerticalDivider(width: AppTheme.spacingSM, thickness: 1),
+            Expanded(
+              child: MetricCard(
+                icon: isProfit ? Icons.trending_up : Icons.trending_down,
+                label: isProfit ? 'Profit' : 'Loss',
+                value: CurrencyFormatter.formatCompact(provider.profit.abs()),
+                color: isProfit ? AppTheme.successColor : AppTheme.errorColor,
+                iconSize: 18,
+                tintBackground: true,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 }
+
+
 
 // ─── Profit Tab ───────────────────────────────────────────────────────────────
 

@@ -11,10 +11,10 @@ import '../screens/batch_comparison_screen.dart';
 import '../screens/flock_workspace_screen.dart';
 import '../screens/upgrade_screen.dart';
 import '../theme/app_theme.dart';
-import '../utils/currency_formatter.dart';
 import '../utils/date_formatter.dart';
 import '../widgets/dashboard_summary_card.dart';
 import '../widgets/farm_performance_card.dart';
+import '../widgets/flock_grid_card.dart';
 
 Color _getStageColor(String stage) {
   switch (stage.toLowerCase()) {
@@ -80,7 +80,6 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
         title: const Text('Poultry Pro'),
-        elevation: 0,
       ),
       body: Consumer<FlockProvider>(
         builder: (context, flockProvider, _) {
@@ -285,8 +284,9 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         final recoveryPercentage =
             financeProvider.recoveryPercentageForFlock(flock.id);
-        return _FlockGridCard(
+        return FlockGridCard(
           flock: flock,
+          showDetailedStats: false,
           latestRecord: latest,
           isSelected: isSelected,
           mortalityTotal: recordProvider.mortalityTotalFor(flock.id),
@@ -1326,214 +1326,9 @@ void _showProFlockGate(BuildContext context) {
   );
 }
 }
-class _FlockGridCard extends StatelessWidget {
-  final Flock flock;
-  final bool isSelected;
-  final VoidCallback onTap;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
 
-  const _FlockGridCard({
-    required this.flock,
-    required this.isSelected,
-    required this.onTap,
-    required this.onEdit,
-    required this.onDelete,
-    // Keep these in constructor for backward compat but don't display them
-    required this.latestRecord,
-    required this.mortalityTotal,
-    required this.breakEvenPerBird,
-    required this.breakEvenDisplay,
-    required this.recoveryPercentage,
-  });
 
-  final DailyRecord? latestRecord;
-  final int mortalityTotal;
-  final double breakEvenPerBird;
-  final String breakEvenDisplay;
-  final double recoveryPercentage;
 
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(AppTheme.radiusMD),
-          border: isSelected
-              ? Border.all(color: AppTheme.primaryColor, width: 2)
-              : null,
-          boxShadow: [
-            isSelected ? AppTheme.shadowLG : AppTheme.shadowMD
-          ],
-        ),
-        padding: const EdgeInsets.all(AppTheme.spacingMD),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Status badge ──────────────────────────────────
-            Align(
-              alignment: Alignment.topRight,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: flock.status == 'active'
-                      ? AppTheme.successColor
-                      : AppTheme.warningColor,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  flock.status.toUpperCase(),
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-
-            // ── Flock icon ────────────────────────────────────
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(Icons.egg_alt,
-                  size: 22, color: AppTheme.primaryColor),
-            ),
-            const SizedBox(height: 8),
-
-            // ── Flock name — auto-size ────────────────────────
-            Text(
-              flock.name,
-              style: AppTheme.bodyLarge
-                  .copyWith(fontWeight: FontWeight.w700),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 2,
-            ),
-            const SizedBox(height: 4),
-
-            // ── Bird count ────────────────────────────────────
-            Row(
-              children: [
-                Icon(Icons.groups,
-                    size: 12, color: AppTheme.textSecondary),
-                const SizedBox(width: 3),
-                Flexible(
-                  child: Text(
-                    '${flock.birdCount} ${flock.type}',
-                    style: AppTheme.bodySmall.copyWith(
-                        color: AppTheme.textSecondary),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-
-            // ── Age ───────────────────────────────────────────
-            Row(
-              children: [
-                Icon(Icons.calendar_today,
-                    size: 12, color: AppTheme.primaryColor),
-                const SizedBox(width: 3),
-                Flexible(
-                  child: Text(
-                    flock.ageDisplay,
-                    style: AppTheme.bodySmall.copyWith(
-                        color: AppTheme.primaryColor),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-              ],
-            ),
-
-            const Spacer(),
-
-            // ── Edit / Delete ─────────────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                GestureDetector(
-                  onTap: onEdit,
-                  child: const Icon(Icons.edit_outlined,
-                      size: 16, color: AppTheme.textSecondary),
-                ),
-                const SizedBox(width: AppTheme.spacingSM),
-                GestureDetector(
-                  onTap: onDelete,
-                  child: const Icon(Icons.delete_outline,
-                      size: 16, color: AppTheme.errorColor),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProChip extends StatelessWidget {
-  final String label;
-  const _ProChip({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-            color: AppTheme.primaryColor.withValues(alpha: 0.2)),
-      ),
-      child: Text(label,
-          style: const TextStyle(
-              fontSize: 12, color: AppTheme.primaryColor)),
-    );
-  }
-}
-// ─── Stat Row ─────────────────────────────────────────────────────────────────
-
-class _StatRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _StatRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 13, color: color),
-        const SizedBox(width: 4),
-        Expanded(
-            child: Text(label,
-                style: AppTheme.bodySmall,
-                overflow: TextOverflow.ellipsis)),
-        Text(value,
-            style: AppTheme.bodySmall.copyWith(
-                color: color, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-}
-
-// ─── Today Stat Item ──────────────────────────────────────────────────────────
 
 class _TodayStatItem extends StatelessWidget {
   final IconData icon;
@@ -1689,63 +1484,6 @@ class _VaccinationBanner extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-class _PlanCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final Color color;
-  final List<String> benefits;
-
-  const _PlanCard({
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.benefits,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingMD),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.workspace_premium, color: color),
-                const SizedBox(width: AppTheme.spacingSM),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title,
-                          style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w700)),
-                      Text(subtitle, style: AppTheme.bodySmall),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppTheme.spacingMD),
-            ...benefits.map(
-              (benefit) => Padding(
-                padding: const EdgeInsets.only(bottom: AppTheme.spacingSM),
-                child: Row(
-                  children: [
-                    Icon(Icons.check_circle, size: 18, color: color),
-                    const SizedBox(width: AppTheme.spacingSM),
-                    Expanded(child: Text(benefit)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -7,6 +7,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/subscription_entitlement.dart';
 import '../theme/app_theme.dart';
 import '../providers/auth_provider.dart';
 import '../providers/flock_provider.dart';
@@ -17,6 +20,7 @@ import '../services/database_service.dart';
 import '../services/sync_service.dart';
 import 'backup_screen.dart';
 import 'sign_in_screen.dart';
+import 'upgrade_screen.dart';
 
 // ============================================================================
 //   Unified Section Widget
@@ -340,8 +344,15 @@ class SettingsScreen extends StatelessWidget {
 
       if (signedIn == true && context.mounted) {
         await license.loadEntitlement();
-        sync.startPeriodicSync();
-        unawaited(sync.downloadCloudData());
+        final user = Supabase.instance.client.auth.currentUser;
+        if (user != null) {
+          // Await full reconciliation (push → download → merge) so we never
+          // race the provider reload. Entitlement is confirmed first.
+          await sync.onAuthenticated(
+            user,
+            entitlement: license.entitlement ?? SubscriptionEntitlement.free,
+          );
+        }
 
         await flockProvider.loadFlocks();
         if (context.mounted) await financeProvider.loadFarmFinanceData();
@@ -528,10 +539,15 @@ class SettingsScreen extends StatelessWidget {
     final expiry = entitlement?.expiresAt;
     final sync = context.watch<SyncService>();
     final pendingCount = sync.pendingCount;
-    final lastSynced = sync.lastSyncedAt != null
-        ? '${sync.lastSyncedAt!.day}/${sync.lastSyncedAt!.month}/${sync.lastSyncedAt!.year} '
-          '${sync.lastSyncedAt!.hour}:${sync.lastSyncedAt!.minute.toString().padLeft(2, '0')}'
-        : 'Never';
+
+    String formatTimestamp(DateTime? ts) {
+      if (ts == null) return 'Never';
+      return '${ts.day}/${ts.month}/${ts.year} '
+          '${ts.hour}:${ts.minute.toString().padLeft(2, '0')}';
+    }
+
+    final lastSynced = formatTimestamp(sync.lastSyncedAt);
+    final lastReconciliation = formatTimestamp(sync.lastReconciliationAt);
 
     return _SettingsSection(
       icon: Icons.shield_outlined,
@@ -563,12 +579,27 @@ class SettingsScreen extends StatelessWidget {
               isPro ? 'Premium' : 'Free',
               isPro ? Colors.green : Colors.grey,
             ),
-            trailing: (isPro && expiry != null)
+            trailing: isPro && expiry != null
                 ? Text(
                     'Valid until ${_formatExpiry(expiry)}',
                     style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
                   )
-                : null,
+                : !isPro
+                    ? FilledButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => UpgradeScreen()),
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppTheme.spacingMD,
+                            vertical: AppTheme.spacingXS,
+                          ),
+                        ),
+                        child: const Text('Upgrade'),
+                      )
+                    : null,
           ),
           const SizedBox(height: AppTheme.spacingMD),
 
@@ -592,7 +623,7 @@ class SettingsScreen extends StatelessWidget {
             if (isPro) ...[
               const SizedBox(height: AppTheme.spacingXS),
               _InfoRow(
-                label: 'Last sync',
+                label: 'Last upload',
                 value: lastSynced,
                 secondaryValue: pendingCount == 0
                     ? 'All changes backed up'
@@ -600,6 +631,13 @@ class SettingsScreen extends StatelessWidget {
                 secondaryValueColor:
                     pendingCount > 0 ? Colors.orange : AppTheme.textSecondary,
                 trailing: _buildSyncButton(context, sync),
+              ),
+              const SizedBox(height: AppTheme.spacingXS),
+              _InfoRow(
+                label: 'Last reconciliation',
+                value: lastReconciliation,
+                secondaryValue: 'Local + cloud brought into agreement',
+                secondaryValueColor: AppTheme.textSecondary,
               ),
             ] else ...[
               const SizedBox(height: AppTheme.spacingXS),

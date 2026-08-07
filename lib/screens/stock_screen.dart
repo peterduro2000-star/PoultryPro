@@ -6,8 +6,10 @@ import '../providers/stock_provider.dart';
 import '../providers/flock_provider.dart';
 import '../models/stock.dart';
 import '../widgets/flock_header.dart';
+import '../widgets/metric_card.dart';
 import 'tools_screen.dart';
 import '../utils/date_formatter.dart';
+import '../utils/currency_formatter.dart';
 
 class StockScreen extends StatefulWidget {
   const StockScreen({super.key});
@@ -267,27 +269,36 @@ class _SummaryBar extends StatelessWidget {
       padding: const EdgeInsets.all(AppTheme.spacingMD),
       child: Row(
         children: [
-          _SummaryChip(
-            icon: Icons.inventory_2,
-            label: 'Items',
-            value: '${provider.stocks.length}',
-            color: AppTheme.primaryColor,
+          Expanded(
+            child: MetricCard(
+              icon: Icons.inventory_2,
+              label: 'Items',
+              value: '${provider.stocks.length}',
+              color: AppTheme.primaryColor,
+              tintBackground: true,
+            ),
           ),
           const SizedBox(width: AppTheme.spacingSM),
-          _SummaryChip(
-            icon: Icons.warning,
-            label: 'Low Stock',
-            value: '${provider.alertCount}',
-            color: provider.hasAlerts
-                ? AppTheme.errorColor
-                : AppTheme.successColor,
+          Expanded(
+            child: MetricCard(
+              icon: Icons.warning,
+              label: 'Low Stock',
+              value: '${provider.alertCount}',
+              color: provider.hasAlerts
+                  ? AppTheme.errorColor
+                  : AppTheme.successColor,
+              tintBackground: true,
+            ),
           ),
           const SizedBox(width: AppTheme.spacingSM),
-          _SummaryChip(
-            icon: Icons.attach_money,
-            label: 'Total Value',
-            value: '₦${provider.totalStockValue.toStringAsFixed(0)}',
-            color: AppTheme.secondaryColor,
+          Expanded(
+            child: MetricCard(
+              icon: Icons.attach_money,
+              label: 'Total Value',
+              value: CurrencyFormatter.formatCompact(provider.totalStockValue),
+              color: AppTheme.secondaryColor,
+              tintBackground: true,
+            ),
           ),
         ],
       ),
@@ -295,43 +306,7 @@ class _SummaryBar extends StatelessWidget {
   }
 }
 
-class _SummaryChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
 
-  const _SummaryChip(
-      {required this.icon,
-      required this.label,
-      required this.value,
-      required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-            vertical: AppTheme.spacingSM, horizontal: AppTheme.spacingSM),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(AppTheme.radiusSM),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(height: 2),
-            Text(value,
-                style: AppTheme.bodyLarge
-                    .copyWith(color: color, fontWeight: FontWeight.bold),
-                overflow: TextOverflow.ellipsis),
-            Text(label, style: AppTheme.bodySmall),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // ─── Filter Bar ───────────────────────────────────────────────────────────────
 

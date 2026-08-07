@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../providers/license_provider.dart';
+import '../models/subscription_entitlement.dart';
 import '../services/database_service.dart';
 import '../services/feature_gate.dart';
 import '../services/supabase_auth_service.dart';
@@ -105,7 +105,6 @@ enum SyncState { idle, syncing, error }
 class SyncService extends ChangeNotifier {
   final DatabaseService _db;
   final SupabaseAuthService _auth;
-  LicenseProvider? _license;
 
   SyncService({
     DatabaseService? db,
@@ -118,17 +117,34 @@ class SyncService extends ChangeNotifier {
   SyncState _state = SyncState.idle;
   String? _lastError;
   DateTime? _lastSyncedAt;
+  DateTime? _lastReconciliationAt;
   int _pendingCount = 0;
   bool _disposed = false;
 
+  /// Last entitlement handed to a lifecycle call. Decouples [SyncService] from
+  /// [LicenseProvider]: it is plain input, never imported or read back.
+  SubscriptionEntitlement? _entitlement;
+
+  /// Fired once after a reconciliation (push → download → merge) completes so
+  /// the app can reload its providers from the freshly merged SQLite store.
+  /// Awaited while the mutex is still held, so the reload can never interleave
+  /// with a later reconciliation.
+  FutureOr<void> Function()? onReconcileComplete;
+
   Timer? _debounceTimer;
+  Timer? _periodicTimer;
   bool _syncInProgress = false;
 
+  /// Guards reconciliation so it only runs once per authenticated user/session.
+  String? _reconciledForUserId;
+
   static const Duration _debounceInterval = Duration(seconds: 5);
+  static const Duration _periodicInterval = Duration(minutes: 5);
 
   SyncState get state => _state;
   String? get lastError => _lastError;
   DateTime? get lastSyncedAt => _lastSyncedAt;
+  DateTime? get lastReconciliationAt => _lastReconciliationAt;
   int get pendingCount => _pendingCount;
   bool get isSyncing => _state == SyncState.syncing;
   bool get hasError => _state == SyncState.error;
@@ -136,15 +152,77 @@ class SyncService extends ChangeNotifier {
 
   bool get isAnonymous => _auth.isAnonymous;
 
-  void setLicense(LicenseProvider license) {
-    _license = license;
-  }
+  bool _canUseCloud() =>
+      _entitlement != null && FeatureGate.canUseCloud(_entitlement!);
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
-  /// Call once from main.dart after auth is initialised.
-  void startPeriodicSync() {
-    debugPrint('SyncService: event-driven sync initialised');
+  /// Drives the full reconciliation pipeline for an authenticated, verified
+  /// user. The caller (AuthProvider via LicenseProvider) must load and confirm
+  /// the entitlement and pass it here — [SyncService] never reads it itself.
+  ///
+  ///   1. push any pending local queue
+  ///   2. download the cloud snapshot for the user
+  ///   3. merge into SQLite (incremental, id-keyed, never wipes/enqueues)
+  ///   4. (awaited) notify providers to reload from the merged store
+  ///   5. start background sync
+  ///
+  /// The mutex ([_syncInProgress]) is held for the ENTIRE sequence above —
+  /// including the provider reload — so two reconciliations can never interleave
+  /// a later merge with an earlier reload. Runs at most once per user id.
+  Future<void> onAuthenticated(
+    User user, {
+    required SubscriptionEntitlement entitlement,
+  }) async {
+    _entitlement = entitlement;
+    final eligible = !user.isAnonymous && FeatureGate.canUseCloud(entitlement);
+    if (!eligible) {
+      debugPrint('SyncService.onAuthenticated: not eligible (user=${user.id})');
+      stopAndClear();
+      return;
+    }
+    if (_reconciledForUserId == user.id) {
+      debugPrint('SyncService.onAuthenticated: already reconciled for '
+          '${user.id} — skipping');
+      startPeriodicSync();
+      return;
+    }
+    if (_syncInProgress) {
+      debugPrint('SyncService.onAuthenticated: mutex held by another '
+          'reconciliation — skipping');
+      return;
+    }
+    debugPrint('SyncService.onAuthenticated: starting lifecycle for '
+        '${user.id}');
+    _syncInProgress = true;
+    _setState(SyncState.syncing);
+    try {
+      await _reconcileCore();
+      _reconciledForUserId = user.id;
+      // Reload providers UNDER the lock so a later reconciliation cannot
+      // interleave its merge with this reload.
+      await onReconcileComplete?.call();
+    } catch (e, st) {
+      _lastError = e.toString();
+      debugPrint('SyncService.onAuthenticated error: $e\n$st');
+      _setState(SyncState.error);
+    } finally {
+      _syncInProgress = false;
+      await _refreshPendingCount();
+      startPeriodicSync();
+    }
+  }
+
+  /// Best-effort flush + teardown on sign-out so no previous-account data
+  /// lingers. The caller is responsible for pushing pending changes before
+  /// this is invoked; we additionally attempt a final flush when eligible.
+  Future<void> onSignOut() async {
+    if (_canUseCloud() && !_syncInProgress && _auth.isAuthenticated) {
+      unawaited(syncNow());
+    }
+    stopAndClear();
+    _entitlement = null;
+    _reconciledForUserId = null;
   }
 
   /// Completely stops the sync service and clears all of its state.
@@ -155,33 +233,28 @@ class SyncService extends ChangeNotifier {
     _state = SyncState.idle;
     _lastError = null;
     _lastSyncedAt = null;
+    _lastReconciliationAt = null;
     _pendingCount = 0;
     notifyListeners();
   }
 
-  /// Driven by the provider graph whenever the license/entitlement changes.
-  /// Starts cloud sync only once a real (non-anonymous) account with a cloud
-  /// entitlement is established; otherwise stops and clears all sync state.
-  /// This guarantees sync never initialises for anonymous users and only
-  /// starts after the authenticated user's entitlement has been loaded.
-  void onEntitlementChanged() {
-    final entitlement = _license?.entitlement;
-    final eligible = !isAnonymous &&
-        entitlement != null &&
-        FeatureGate.canUseCloud(entitlement);
-
-    if (!eligible) {
-      stopAndClear();
-      return;
-    }
-
-    startPeriodicSync();
-    unawaited(syncNow());
+  /// Starts a background periodic reconciliation (push → download → merge) so
+  /// changes made on other devices are pulled in without a restart. A realtime
+  /// listener can replace this later; the periodic fallback stays as backup.
+  void startPeriodicSync() {
+    stopPeriodicSync();
+    if (!_canUseCloud()) return;
+    _periodicTimer = Timer.periodic(_periodicInterval, (_) {
+      unawaited(reconcileState());
+    });
+    debugPrint('SyncService: background sync started');
   }
 
   void stopPeriodicSync() {
     _debounceTimer?.cancel();
     _debounceTimer = null;
+    _periodicTimer?.cancel();
+    _periodicTimer = null;
   }
 
   @override
@@ -191,16 +264,17 @@ class SyncService extends ChangeNotifier {
     super.dispose();
   }
 
-  // ─── Public trigger ────────────────────────────────────────────────────────
+  // ─── Push-only trigger ─────────────────────────────────────────────────────
 
+  /// Pushes any pending local queue to Supabase. Safe to call any time
+  /// (manual "Sync" button, auto-upload, sign-out flush). Does not download.
   Future<void> syncNow() async {
     debugPrint("SYNC user = ${Supabase.instance.client.auth.currentUser?.id}");
     if (_syncInProgress) return;
     // Anonymous users must never use cloud sync.
     if (_auth.isAnonymous) return;
     if (!_auth.isAuthenticated) return;
-    final entitlement = _license?.entitlement;
-    if (entitlement == null || !FeatureGate.canUseCloud(entitlement)) return;
+    if (!_canUseCloud()) return;
 
     _syncInProgress = true;
     _setState(SyncState.syncing);
@@ -220,50 +294,72 @@ class SyncService extends ChangeNotifier {
     }
   }
 
-  Future<void> downloadCloudData() async {
-    if (_syncInProgress) return;
-    // Anonymous users must never use cloud sync.
-    if (_auth.isAnonymous) return;
-    final userId = _auth.currentUserId;
-    if (userId == null) return;
+  // ─── Reconciliation (push → download → merge) ──────────────────────────────
 
+  /// Core reconciliation (push → download → merge). Does NOT manage the mutex;
+  /// callers ([reconcileState], [onAuthenticated]) must hold [_syncInProgress]
+  /// for the whole critical section so nothing can interleave.
+  Future<bool> _reconcileCore() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return false;
+
+    // Step 1: push local unsynced changes FIRST (offline-first). Doing this
+    // before the download guarantees a newer cloud record can never clobber a
+    // local pending edit — the edit is uploaded before we read the snapshot.
+    await _processPendingQueue();
+
+    // Step 2: download the full cloud snapshot for this user.
+    final data = <String, dynamic>{};
+    for (final entry in _supabaseTables.entries) {
+      final localTable = entry.key;
+      final supabaseTable = entry.value;
+
+      final rows = await _client
+          .from(supabaseTable)
+          .select()
+          .eq('user_id', userId);
+
+      final localRows = rows
+          .whereType<Map<String, dynamic>>()
+          .map((r) => _toCamelCase(localTable, r))
+          .toList();
+
+      data[localTable] = localRows;
+    }
+
+    // Step 3: merge intelligently into SQLite (never wipes, never enqueues).
+    await _db.mergeCloudSnapshot(data);
+
+    _lastReconciliationAt = DateTime.now();
+    _lastError = null;
+    _setState(SyncState.idle);
+    return true;
+  }
+
+  /// Brings local SQLite and the cloud back into agreement for the current
+  /// verified user. Runs whenever a verified session becomes active or changes
+  /// (boot, OTP verification, sign-in, account switch, reinstall) — NOT on
+  /// every JWT refresh. Acquires [_syncInProgress] for the whole push+pull
+  /// critical section. Used by the periodic background timer.
+  Future<bool> reconcileState() async {
+    final user = _auth.currentUser;
+    if (user == null || user.isAnonymous) return false;
+    if (!_canUseCloud()) return false;
+
+    // Re-read defensively — currentUser can be null during cold start.
+    if (Supabase.instance.client.auth.currentUser?.id == null) return false;
+
+    if (_syncInProgress) return false;
     _syncInProgress = true;
     _setState(SyncState.syncing);
 
     try {
-      final data = <String, dynamic>{};
-
-      for (final entry in _supabaseTables.entries) {
-        final localTable = entry.key;
-        final supabaseTable = entry.value;
-
-        final rows = await _client
-            .from(supabaseTable)
-            .select()
-            .eq('user_id', userId);
-
-        final localRows = rows
-            .whereType<Map<String, dynamic>>()
-            .map((r) => _toCamelCase(localTable, r))
-            .toList();
-
-        data[localTable] = localRows;
-      }
-
-      await _db.importAllFromJson({
-        'version': '4.0',
-        'timestamp': DateTime.now().toIso8601String(),
-        'appVersion': 'poultry_pro_v4',
-        'data': data,
-      });
-
-      _lastSyncedAt = DateTime.now();
-      _lastError = null;
-      _setState(SyncState.idle);
+      return await _reconcileCore();
     } catch (e, st) {
       _lastError = e.toString();
-      debugPrint('SyncService download error: $e\n$st');
+      debugPrint('SyncService reconcile error: $e\n$st');
       _setState(SyncState.error);
+      return false;
     } finally {
       _syncInProgress = false;
       await _refreshPendingCount();
@@ -274,6 +370,13 @@ class SyncService extends ChangeNotifier {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(_debounceInterval, () {
       _debounceTimer = null;
+      if (_syncInProgress) {
+        // Reconciliation owns the mutex. Re-arm so this edit is pushed once
+        // the lock is released — the queue entry is already persisted, so the
+        // change is never lost and never races the in-flight reconcile.
+        scheduleSync();
+        return;
+      }
       unawaited(syncNow());
     });
   }

@@ -18,6 +18,7 @@ import '../providers/flock_provider.dart';
 import '../providers/license_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/currency_formatter.dart';
+import '../widgets/flock_chips.dart';
 import 'finance_screen.dart';
 import 'health_screen.dart';
 import 'records_screen.dart';
@@ -333,25 +334,11 @@ class _FlockWorkspaceScreenState extends State<FlockWorkspaceScreen> {
                   ],
                 ),
               ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isSoldOut
-                      ? AppTheme.infoColor
-                      : flock.status == FlockStatus.active
-                          ? AppTheme.successColor
-                          : AppTheme.warningColor,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  statusLabel,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+              StatusBadge(
+                flock.status,
+                label: statusLabel,
+                color: isSoldOut ? AppTheme.infoColor : null,
+                fontSize: 10,
               ),
             ],
           ),

@@ -10,6 +10,7 @@ import '../services/payment/payment_service.dart';
 import '../services/payment/payment_service_factory.dart';
 import '../services/subscription_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/plan_card.dart';
 import 'backup_screen.dart';
 
 class UpgradeScreen extends StatefulWidget {
@@ -300,7 +301,7 @@ class _UpgradeScreenState extends State<UpgradeScreen> {
           ),
           const SizedBox(height: AppTheme.spacingLG),
 
-          _PlanCard(
+          PlanCard(
             title: 'Free',
             subtitle: 'For getting started',
             color: AppTheme.textSecondary,
@@ -309,7 +310,7 @@ class _UpgradeScreenState extends State<UpgradeScreen> {
           ),
           const SizedBox(height: AppTheme.spacingMD),
 
-          _PlanCard(
+          PlanCard(
             title: 'Pro',
             subtitle: 'For growing poultry businesses',
             color: AppTheme.primaryColor,
@@ -508,103 +509,3 @@ class _PaymentConfirmationDialogState extends State<_PaymentConfirmationDialog> 
   }
 }
 
-class _PlanCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final Color color;
-  final List<String> benefits;
-  final bool isCurrent;
-
-  const _PlanCard({
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.benefits,
-    required this.isCurrent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: isCurrent
-            ? Border.all(color: color, width: 2)
-            : Border.all(color: Colors.transparent, width: 2),
-        boxShadow: isCurrent
-            ? [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.15),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ]
-            : null,
-      ),
-      child: Card(
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingMD),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.workspace_premium, color: color),
-                  const SizedBox(width: AppTheme.spacingSM),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(subtitle, style: AppTheme.bodySmall),
-                      ],
-                    ),
-                  ),
-                  if (isCurrent)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        'Current',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: color,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: AppTheme.spacingMD),
-              ...benefits.map(
-                (benefit) => Padding(
-                  padding: const EdgeInsets.only(bottom: AppTheme.spacingSM),
-                  child: Row(
-                    children: [
-                      Icon(Icons.check_circle, size: 18, color: color),
-                      const SizedBox(width: AppTheme.spacingSM),
-                      Expanded(child: Text(benefit)),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

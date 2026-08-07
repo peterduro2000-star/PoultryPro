@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/flock_provider.dart';
 import '../theme/app_theme.dart';
+import 'flock_chips.dart';
 
 class FlockHeader extends StatelessWidget {
   const FlockHeader({super.key});
@@ -92,29 +93,7 @@ class FlockHeader extends StatelessWidget {
                         ),
                         const SizedBox(width: 6),
                         // Status badge
-                        IntrinsicWidth(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: flock.status == 'active'
-                                  ? AppTheme.successColor
-                                  : AppTheme.textSecondary,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              flock.status.toUpperCase(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                          ),
-                        ),
+                        StatusBadge(flock.status),
                       ],
                     ),
                   ],

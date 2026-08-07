@@ -9,10 +9,37 @@ class AppTheme {
   static const Color backgroundColor = Color(0xFFF5F1E8); // Cream
   static const Color textPrimary = Color(0xFF2C2C2C); // Charcoal
   static const Color textSecondary = Color(0xFF6B6B6B); // Gray
-  static const Color successColor = Color(0xFF4CAF50);
-  static const Color warningColor = Color(0xFFFFC107);
-  static const Color errorColor = Color(0xFFF44336);
-  static const Color infoColor = Color(0xFF2196F3);
+  // Semantic colors — warmed/muted to sit inside the earthy palette
+  // instead of reading as generic Material red/green/amber/blue.
+  static const Color successColor = Color(0xFF6B9B5E); // muted leaf green (kin to sage)
+  static const Color warningColor = Color(0xFFD68A34); // burnt amber (kin to gold, distinct from accent)
+  static const Color errorColor = Color(0xFFC1443C); // brick red (kin to terracotta)
+  static const Color infoColor = Color(0xFF4A7B8C); // muted teal-blue
+
+  /// Centralized stage → color mapping so every screen that shows a
+  /// flock's production stage (chick/grower/laying/etc.) uses the same
+  /// earthy-palette color instead of scattering raw Colors.blue/green/
+  /// orange/grey across FlocksScreen, HomeScreen, etc.
+  static Color stageColor(String stage) {
+    switch (stage.toLowerCase()) {
+      case 'brooding':
+      case 'chick':
+        return infoColor;
+      case 'growing':
+      case 'pullet':
+      case 'grower':
+        return secondaryColor;
+      case 'finishing':
+      case 'laying':
+        return accentColor;
+      case 'ready for harvest':
+        return primaryColor;
+      case 'spent':
+        return textSecondary;
+      default:
+        return textSecondary;
+    }
+  }
 
   // Text Styles
   static TextStyle headingXL = GoogleFonts.playfairDisplay(
@@ -67,6 +94,48 @@ class AppTheme {
     fontSize: 12,
     fontWeight: FontWeight.w600,
     color: Colors.white,
+  );
+
+  /// Full Material 3 TextTheme built from the same two fonts used
+  /// throughout the app (Playfair Display for headings, Inter for body/
+  /// label). Plug this into MaterialApp's ThemeData.textTheme instead of
+  /// GoogleFonts.poppinsTextTheme() — otherwise every widget that doesn't
+  /// explicitly use AppTheme.headingX / bodyX (most notably AppBar titles,
+  /// which just do `Text('My Flocks')` with no style) silently falls back
+  /// to Poppins, giving the app three unintentional fonts at once.
+  static TextTheme get textTheme => TextTheme(
+    displayLarge: headingXL,
+    displayMedium: headingLarge,
+    displaySmall: headingMedium,
+    headlineLarge: headingMedium,
+    headlineMedium: headingSmall,
+    headlineSmall: headingSmall,
+    titleLarge: headingSmall,
+    titleMedium: bodyLarge.copyWith(fontWeight: FontWeight.w600),
+    titleSmall: bodyMedium.copyWith(fontWeight: FontWeight.w600),
+    bodyLarge: bodyLarge,
+    bodyMedium: bodyMedium,
+    bodySmall: bodySmall,
+    labelLarge: labelLarge.copyWith(color: textPrimary),
+    labelMedium: labelMedium.copyWith(color: textPrimary),
+    labelSmall: bodySmall,
+  );
+
+  /// AppBarTheme pinned to the same cream background used as
+  /// Scaffold.backgroundColor everywhere, with surfaceTintColor turned
+  /// off. Without this, Material 3's ColorScheme.fromSeed gives the
+  /// AppBar its own derived surface-tint background that doesn't quite
+  /// match AppTheme.backgroundColor, producing a faint seam at the top
+  /// of every screen (worse on screens using elevation: 0).
+  static AppBarTheme get appBarTheme => AppBarTheme(
+    backgroundColor: backgroundColor,
+    foregroundColor: textPrimary,
+    surfaceTintColor: Colors.transparent,
+    elevation: 1,
+    shadowColor: Colors.black.withOpacity(0.06),
+    centerTitle: false,
+    titleTextStyle: headingSmall,
+    iconTheme: const IconThemeData(color: textPrimary),
   );
 
   // Spacing

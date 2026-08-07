@@ -1122,6 +1122,122 @@ class DatabaseService {
     }
   }
 
+  /// Id-keyed, non-destructive reconciliation of a downloaded cloud snapshot
+  /// into the local SQLite store. Never wipes tables, never enqueues any
+  /// `sync_queue` entries (otherwise download → insert → enqueue → re-upload
+  /// would create duplicates), and never resurrects a locally soft-deleted row.
+  ///
+  /// Each [data] entry is keyed by local table name and holds a list of rows
+  /// already mapped to the local camelCase shape by [SyncService._toCamelCase].
+  /// Conflict resolution per row:
+  ///   • no local row                       → insert cloud row as `synced`
+  ///   • local row `syncStatus == pending`   → keep local (offline-first; it
+  ///                                           will upload on next push)
+  ///   • cloud row `deleted`                 → mark local row `deleted = 1`
+  ///                                           (do NOT physically remove)
+  ///   • else compare `version` / `lastModified`:
+  ///       - cloud newer version → cloud wins (overwrite, mark `synced`)
+  ///       - local newer version → keep local
+  ///       - equal versions      → newer `lastModified` wins, else keep local
+  ///
+  /// Returns the number of rows changed (inserted or updated).
+  Future<int> mergeCloudSnapshot(Map<String, dynamic> data) async {
+    final db = await database;
+    final now = nowIso();
+    int merged = 0;
+
+    await db.transaction((txn) async {
+      // Parent-first order so child FK references resolve.
+      for (final table in allowedTables) {
+        final records = data[table] as List<dynamic>? ?? [];
+        for (final record in records) {
+          // Strip server-only columns (e.g. user_id) that do not exist in the
+          // local tables — otherwise the insert/update would throw.
+          final cloud = _sanitizeCloudRow(record as Map);
+          final id = cloud['id']?.toString();
+          if (id == null) continue;
+
+          final cloudDeleted = _asInt(cloud['deleted']) == 1;
+          final cloudVersion = _asInt(cloud['version']);
+          final cloudLastModified = cloud['lastModified']?.toString();
+
+          final existing = await txn.query(
+            table,
+            where: 'id = ?',
+            whereArgs: [id],
+            limit: 1,
+          );
+          final hasLocal = existing.isNotEmpty;
+
+          // 1. Local unsynced change wins — offline-first. This also covers a
+          //    local pending soft-delete (syncStatus is `pending`), which must
+          //    survive against a cloud-active row and upload its tombstone.
+          if (hasLocal) {
+            final local = existing.first;
+            final localStatus = local['syncStatus']?.toString();
+            if (localStatus == SyncStatus.pending) continue;
+
+            // 2. Cloud-deleted → mark local row deleted (preserve soft-delete).
+            if (cloudDeleted) {
+              await txn.update(
+                table,
+                {
+                  'deleted': 1,
+                  'syncStatus': SyncStatus.synced,
+                  'lastSyncedAt': now,
+                },
+                where: 'id = ?',
+                whereArgs: [id],
+              );
+              merged++;
+              continue;
+            }
+
+            // 3. Version / lastModified comparison.
+            final localVersion = _asInt(local['version']);
+            final cloudWins = cloudVersion > localVersion
+                ? true
+                : (cloudVersion < localVersion
+                    ? false
+                    : _isNewer(cloudLastModified, local['lastModified']?.toString()));
+
+            if (cloudWins) {
+              final syncedRow = Map<String, dynamic>.from(cloud);
+              syncedRow['syncStatus'] = SyncStatus.synced;
+              syncedRow['serverId'] = id;
+              syncedRow['lastSyncedAt'] = now;
+              await txn.update(
+                table,
+                syncedRow,
+                where: 'id = ?',
+                whereArgs: [id],
+              );
+              merged++;
+            }
+            // else: keep local — nothing to do.
+            continue;
+          }
+
+          // No local row.
+          if (cloudDeleted) continue; // nothing to tombstone locally.
+
+          final newRow = Map<String, dynamic>.from(cloud);
+          newRow['syncStatus'] = SyncStatus.synced;
+          newRow['serverId'] = id;
+          newRow['lastSyncedAt'] = now;
+          await txn.insert(
+            table,
+            newRow,
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+          merged++;
+        }
+      }
+    });
+
+    return merged;
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // UTILITY
   // ══════════════════════════════════════════════════════════════════════════
@@ -1141,6 +1257,36 @@ class DatabaseService {
       debugPrint('Clear error: $e');
       rethrow;
     }
+  }
+
+  // ─── Merge helpers ─────────────────────────────────────────────────────────
+
+  /// Returns a copy of [row] with server-only columns removed. The local
+  /// business tables have no `user_id` column, so writing it through would
+  /// throw a SQLite error. Centralised here so the column set is easy to extend.
+  static Map<String, dynamic> _sanitizeCloudRow(Map<dynamic, dynamic> row) {
+    const cloudOnlyColumns = {
+      'user_id',
+    };
+    final cleaned = Map<String, dynamic>.from(row);
+    for (final column in cloudOnlyColumns) {
+      cleaned.remove(column);
+    }
+    return cleaned;
+  }
+
+  static int _asInt(dynamic value, [int def = 0]) =>
+      int.tryParse(value?.toString() ?? '') ?? def;
+
+  /// Returns true if [a] is strictly newer than [b] (ISO-8601 strings).
+  static bool _isNewer(String? a, String? b) {
+    if (a == null) return false;
+    if (b == null) return true;
+    final da = DateTime.tryParse(a);
+    final db = DateTime.tryParse(b);
+    if (da == null) return false;
+    if (db == null) return true;
+    return da.isAfter(db);
   }
 
   Future<bool> hasAnyBusinessRecords() async {

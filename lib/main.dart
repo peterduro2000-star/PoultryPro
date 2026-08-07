@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'models/subscription_entitlement.dart';
 import 'providers/alerts_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/daily_record_provider.dart';
@@ -63,13 +63,26 @@ class PoultryProApp extends StatelessWidget {
           },
         ),
         ChangeNotifierProxyProvider<LicenseProvider, SyncService>(
-          create: (_) => SyncService(),
+          create: (_) {
+            final sync = SyncService();
+            // Wire debounced auto-upload to every local write (singleton).
+            onDataChanged = () => sync.scheduleSync();
+            return sync;
+          },
           update: (_, license, sync) {
             final effectiveSync = sync ?? SyncService();
-            effectiveSync.setLicense(license);
-            // Start/stop cloud sync based on the (now loaded) entitlement.
-            // Sync only runs for non-anonymous accounts with cloud access.
-            effectiveSync.onEntitlementChanged();
+            // Drive the lifecycle from the now-loaded entitlement. Never
+            // initialises for anonymous users; starts a full reconciliation
+            // (push → download → merge) once a verified Pro account is active.
+            final user = Supabase.instance.client.auth.currentUser;
+            if (user != null && !user.isAnonymous) {
+              unawaited(effectiveSync.onAuthenticated(
+                user,
+                entitlement: license.entitlement ?? SubscriptionEntitlement.free,
+              ));
+            } else {
+              effectiveSync.onSignOut();
+            }
             return effectiveSync;
           },
         ),
@@ -85,8 +98,22 @@ class PoultryProApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: AppTheme.primaryColor),
-          textTheme: GoogleFonts.poppinsTextTheme(),
+          scaffoldBackgroundColor: AppTheme.backgroundColor,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: AppTheme.primaryColor,
+            // Keep the seeded scheme (drives default component colors like
+            // FilledButton, Switch, default Card) but pin surface/background
+            // to the actual app background so nothing derived by the seed
+            // algorithm drifts away from the cream palette.
+            surface: AppTheme.backgroundColor,
+            error: AppTheme.errorColor,
+          ),
+          // Was GoogleFonts.poppinsTextTheme() — replaced with the theme's
+          // own Playfair Display / Inter pairing so AppBar titles and any
+          // unstyled Text widgets match the rest of the app instead of
+          // silently rendering in Poppins.
+          textTheme: AppTheme.textTheme,
+          appBarTheme: AppTheme.appBarTheme,
         ),
         home: const _AppBootstrap(),
       ),
@@ -150,8 +177,8 @@ class _AppBootstrapState extends State<_AppBootstrap> {
     _lastUserId = newUserId;
     if (!mounted) return;
     // Stop and clear sync immediately on any user change. The license graph
-    // will re-initialise it (via onEntitlementChanged) only once the new
-    // account's entitlement has loaded.
+    // will re-initialise it (via onAuthenticated) only once the new account's
+    // entitlement has loaded.
     context.read<SyncService>().stopAndClear();
     // Kicks off a full reset + reload for the new user.
     unawaited(_resetAndReloadForUser());
@@ -178,10 +205,10 @@ class _AppBootstrapState extends State<_AppBootstrap> {
         'Supabase user: ${Supabase.instance.client.auth.currentUser?.email}',
       );
 
-      // Cloud sync is no longer started here. It is driven by the provider
-      // graph (LicenseProvider → SyncService.onEntitlementChanged) so it only
-      // initialises after authentication is established and the account's
-      // entitlement has been loaded. Anonymous sessions never sync.
+      // Cloud sync is driven by the provider graph (LicenseProvider →
+      // SyncService.onAuthenticated) so it only initialises after auth is
+      // established and the account's entitlement has been loaded. Anonymous
+      // sessions never sync.
 
       debugPrint("MAIN user after init = ${Supabase.instance.client.auth.currentUser?.id}");
       debugPrint("MAIN email after init = ${Supabase.instance.client.auth.currentUser?.email}");
@@ -196,6 +223,10 @@ class _AppBootstrapState extends State<_AppBootstrap> {
         if (!_authListenerAttached) {
           auth.addListener(_onAuthChanged);
           _authListenerAttached = true;
+          // After each reconciliation, reload providers from the freshly
+          // merged SQLite store (always after the merge completes).
+          context.read<SyncService>().onReconcileComplete =
+              _resetAndReloadForUser;
         }
         setState(() => _bootComplete = true);
       }

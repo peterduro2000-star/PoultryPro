@@ -6,6 +6,7 @@ import '../providers/health_provider.dart';
 import '../providers/flock_provider.dart';
 import '../models/health_event.dart';
 import '../widgets/flock_header.dart';
+import '../widgets/metric_card.dart';
 import '../utils/date_formatter.dart';
 
 class HealthScreen extends StatefulWidget {
@@ -156,25 +157,28 @@ class _SummaryBar extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           Flexible(
-            child: _SummaryChip(
+            child: MetricCard(
                 icon: Icons.event_note,
                 label: 'Total Events',
                 value: '${provider.events.length}',
-                color: AppTheme.primaryColor),
+                color: AppTheme.primaryColor,
+                tintBackground: true),
           ),
           Flexible(
-            child: _SummaryChip(
+            child: MetricCard(
                 icon: Icons.warning,
                 label: 'High Severity',
                 value: '${provider.highSeverityEvents.length}',
-                color: AppTheme.errorColor),
+                color: AppTheme.errorColor,
+                tintBackground: true),
           ),
           Flexible(
-            child: _SummaryChip(
+            child: MetricCard(
                 icon: Icons.people,
                 label: 'Birds Affected',
                 value: '${provider.totalAffectedBirds}',
-                color: AppTheme.warningColor),
+                color: AppTheme.warningColor,
+                tintBackground: true),
           ),
         ],
       ),
@@ -182,42 +186,7 @@ class _SummaryBar extends StatelessWidget {
   }
 }
 
-class _SummaryChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
 
-  const _SummaryChip({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingSM, horizontal: AppTheme.spacingSM),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 26),
-        borderRadius: BorderRadius.circular(AppTheme.radiusSM),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 2),
-          Text(value,
-              style: AppTheme.bodyLarge.copyWith(color: color, fontWeight: FontWeight.bold)),
-          Text(label,
-              style: AppTheme.bodySmall,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis),
-        ],
-      ),
-    );
-  }
-}
 
 // ─── Health Event Card ────────────────────────────────────────────────────────
 

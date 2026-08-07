@@ -7,6 +7,8 @@ class MetricCard extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
+  final bool tintBackground;
+  final double iconSize;
   final double width;
 
   const MetricCard({
@@ -15,6 +17,8 @@ class MetricCard extends StatelessWidget {
     required this.label,
     required this.value,
     required this.color,
+    this.tintBackground = false,
+    this.iconSize = 20,
     this.width = double.infinity,
   });
 
@@ -36,41 +40,52 @@ class MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(AppTheme.spacingSM),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(AppTheme.radiusSM),
-            ),
-            child: Icon(icon, color: color, size: 22),
+    final displayValue = _getFormattedValue();
+    final card = Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(AppTheme.spacingSM),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(AppTheme.radiusSM),
           ),
-          const SizedBox(height: AppTheme.spacingSM),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.center,
-            child: Text(
-              _getFormattedValue(),
-              style: AppTheme.bodyLarge.copyWith(
-                color: color, 
-                fontWeight: FontWeight.bold,
-                letterSpacing: -0.5, // Tighter spacing for large numbers
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
+          child: Icon(icon, color: color, size: iconSize),
+        ),
+        const SizedBox(height: AppTheme.spacingXS),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.center,
+          child: Text(
+            displayValue,
+            style: AppTheme.bodyLarge.copyWith(
+              color: color,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.5,
             ),
-          ),
-          const SizedBox(height: AppTheme.spacingSM),
-          Text(
-            label,
-            style: AppTheme.bodySmall,
             textAlign: TextAlign.center,
+            maxLines: 1,
           ),
-        ],
-      ),
+        ),
+        Text(
+          label,
+          style: AppTheme.bodySmall,
+          textAlign: TextAlign.center,
+        ),
+      ],
     );
+
+    if (tintBackground) {
+      return Container(
+        width: width,
+        padding: const EdgeInsets.all(AppTheme.spacingSM),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(AppTheme.radiusSM),
+        ),
+        child: card,
+      );
+    }
+    return SizedBox(width: width, child: card);
   }
 }
